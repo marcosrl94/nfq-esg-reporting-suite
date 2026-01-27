@@ -1,0 +1,219 @@
+/* PALANTIR-Inspired Design System */
+
+:root {
+  /* PALANTIR Color Palette */
+  --palantir-black: #000000;
+  --palantir-dark: #0a0a0a;
+  --palantir-darker: #1a1a1a;
+  --palantir-gray-900: #1e1e1e;
+  --palantir-gray-800: #2a2a2a;
+  --palantir-gray-700: #3a3a3a;
+  --palantir-gray-600: #4a4a4a;
+  --palantir-gray-500: #6a6a6a;
+  --palantir-gray-400: #8a8a8a;
+  --palantir-gray-300: #aaaaaa;
+  --palantir-gray-200: #cccccc;
+  --palantir-gray-100: #e5e5e5;
+  
+  /* Accent Colors - PALANTIR Cyan/Blue */
+  --palantir-cyan: #00d4ff;
+  --palantir-cyan-dark: #00a8cc;
+  --palantir-blue: #0066ff;
+  --palantir-blue-dark: #0052cc;
+  --palantir-blue-light: #3385ff;
+  
+  /* Status Colors */
+  --palantir-success: #00ff88;
+  --palantir-success-dark: #00cc6a;
+  --palantir-warning: #ffaa00;
+  --palantir-error: #ff4444;
+  --palantir-info: var(--palantir-cyan);
+  
+  /* Backgrounds */
+  --bg-primary: var(--palantir-black);
+  --bg-secondary: var(--palantir-dark);
+  --bg-tertiary: var(--palantir-darker);
+  --bg-card: var(--palantir-gray-900);
+  --bg-hover: var(--palantir-gray-800);
+  
+  /* Text Colors */
+  --text-primary: #ffffff;
+  --text-secondary: var(--palantir-gray-300);
+  --text-tertiary: var(--palantir-gray-500);
+  --text-muted: var(--palantir-gray-600);
+  
+  /* Borders */
+  --border-color: var(--palantir-gray-700);
+  --border-color-light: var(--palantir-gray-800);
+  --border-color-hover: var(--palantir-gray-600);
+  
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.7);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.8);
+  --shadow-glow: 0 0 20px rgba(0, 212, 255, 0.3);
+  
+  /* Spacing */
+  --spacing-xs: 0.25rem;
+  --spacing-sm: 0.5rem;
+  --spacing-md: 1rem;
+  --spacing-lg: 1.5rem;
+  --spacing-xl: 2rem;
+  --spacing-2xl: 3rem;
+  
+  /* Typography */
+  --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;
+  
+  /* Transitions */
+  --transition-fast: 150ms ease;
+  --transition-base: 250ms ease;
+  --transition-slow: 350ms ease;
+}
+
+/* Base Styles */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-family);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  margin: 0;
+  padding: 0;
+}
+
+/* Custom Scrollbar - PALANTIR Style */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--palantir-gray-700);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--palantir-gray-600);
+}
+
+/* Selection */
+::selection {
+  background-color: var(--palantir-cyan);
+  color: var(--palantir-black);
+}
+
+/* Focus Styles */
+:focus-visible {
+  outline: 2px solid var(--palantir-cyan);
+  outline-offset: 2px;
+}
+
+/* Utility Classes */
+.palantir-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: var(--spacing-lg);
+  transition: all var(--transition-base);
+}
+
+.palantir-card:hover {
+  border-color: var(--border-color-hover);
+  box-shadow: var(--shadow-md);
+}
+
+.palantir-button-primary {
+  background: var(--palantir-blue);
+  color: var(--text-primary);
+  border: none;
+  padding: var(--spacing-sm) var(--spacing-lg);
+  border-radius: 4px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+
+.palantir-button-primary:hover {
+  background: var(--palantir-blue-dark);
+  box-shadow: 0 0 10px rgba(0, 102, 255, 0.4);
+}
+
+.palantir-button-secondary {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  padding: var(--spacing-sm) var(--spacing-lg);
+  border-radius: 4px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+
+.palantir-button-secondary:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-color-hover);
+  color: var(--text-primary);
+}
+
+.palantir-input {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-radius: 4px;
+  font-family: var(--font-family);
+  transition: all var(--transition-base);
+}
+
+.palantir-input:focus {
+  outline: none;
+  border-color: var(--palantir-cyan);
+  box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.1);
+}
+
+.palantir-input::placeholder {
+  color: var(--text-muted);
+}
+
+/* Responsive Breakpoints */
+@media (max-width: 640px) {
+  :root {
+    --spacing-md: 0.75rem;
+    --spacing-lg: 1rem;
+    --spacing-xl: 1.5rem;
+  }
+}
+
+/* Animations */
+@keyframes palantir-glow {
+  0%, 100% {
+    box-shadow: 0 0 5px rgba(0, 212, 255, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(0, 212, 255, 0.6);
+  }
+}
+
+@keyframes palantir-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.palantir-fade-in {
+  animation: palantir-fade-in var(--transition-base);
+}

@@ -1,0 +1,23 @@
+[
+  {
+    "Consumo Elec": 12500,
+    "Emisiones Scope 1": 45200,
+    "Emisiones Scope 2": 12500,
+    "Emisiones Scope 3": 150000,
+    "Año": 2024
+  },
+  {
+    "Consumo Elec": 12100,
+    "Emisiones Scope 1": 48500,
+    "Emisiones Scope 2": 12100,
+    "Emisiones Scope 3": 155000,
+    "Año": 2023
+  },
+  {
+    "Consumo Elec": 11800,
+    "Emisiones Scope 1": 51000,
+    "Emisiones Scope 2": 11800,
+    "Emisiones Scope 3": null,
+    "Año": 2022
+  }
+]
