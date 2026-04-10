@@ -88,11 +88,14 @@ const Login: React.FC<LoginProps> = ({ users, onLogin }) => {
         <div className="max-w-md rounded-lg border border-amber-500/40 bg-amber-950/30 p-6 text-center">
           <ShieldCheck className="w-10 h-10 text-amber-400 mx-auto mb-3" />
           <h1 className="text-lg font-semibold text-white mb-2">Configuración requerida</h1>
-          <p className="text-sm text-[#a3a3a3]">
+          <p className="text-sm text-[#a3a3a3] text-left">
             El despliegue en producción necesita Supabase (variables{' '}
             <code className="text-xs bg-black/40 px-1 rounded">VITE_SUPABASE_URL</code> y{' '}
             <code className="text-xs bg-black/40 px-1 rounded">VITE_SUPABASE_ANON_KEY</code>
-            ). El modo demo solo está pensado para desarrollo local.
+            ). Cópialas desde tu proyecto Supabase → <em className="text-[#c4c4c4]">Settings → API</em> (Project
+            URL y anon public). En{' '}
+            <strong className="text-[#d4d4d4]">Vercel → tu proyecto → Settings → Environment Variables</strong>{' '}
+            añádelas para <em>Production</em> y vuelve a desplegar. El modo demo solo aplica en desarrollo local.
           </p>
         </div>
       </div>
