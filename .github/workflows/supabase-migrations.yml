@@ -1,0 +1,39 @@
+# Aplica migraciones SQL del repo al proyecto Supabase enlazado a GitHub.
+#
+# Secretos en GitHub → Settings → Secrets and variables → Actions:
+#   SUPABASE_ACCESS_TOKEN  → https://supabase.com/dashboard/account/tokens
+#   SUPABASE_PROJECT_REF   → Settings → General → Reference ID (o URL .../project/<ref>)
+#
+# Tras el primer push con migraciones, revisa el job en la pestaña Actions.
+
+name: Supabase — migraciones
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'supabase/migrations/**'
+      - 'supabase/config.toml'
+  workflow_dispatch:
+
+concurrency:
+  group: supabase-migrations-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Enlazar proyecto remoto
+        run: supabase link --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
+
+      - name: Aplicar migraciones (db push)
+        run: supabase db push
