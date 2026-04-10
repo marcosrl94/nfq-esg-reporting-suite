@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
 import { User, Role, Department } from '../types';
 
 interface UsersContextType {
@@ -18,14 +18,22 @@ interface UsersProviderProps {
   children: ReactNode;
   initialUsers?: User[];
   initialCurrentUser?: User;
+  syncedUsers?: User[] | null;
 }
 
 export const UsersProvider: React.FC<UsersProviderProps> = ({ 
   children, 
   initialUsers = [],
-  initialCurrentUser 
+  initialCurrentUser,
+  syncedUsers
 }) => {
   const [users, setUsers] = useState<User[]>(initialUsers);
+
+  useEffect(() => {
+    if (syncedUsers != null) {
+      setUsers(syncedUsers);
+    }
+  }, [syncedUsers]);
   const [currentUser, setCurrentUser] = useState<User>(
     initialCurrentUser || initialUsers[0] || {
       id: 'anonymous',

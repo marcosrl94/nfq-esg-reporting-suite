@@ -1,24 +1,43 @@
 import React, { useState, useRef } from 'react';
-import { X, UploadCloud, FileSpreadsheet, AlertCircle, CheckCircle2, Loader2, FileText, Download } from 'lucide-react';
+import { X, UploadCloud, FileSpreadsheet, AlertCircle, CheckCircle2, Loader2, FileText, Download, Layers } from 'lucide-react';
 import { StandardSection, Datapoint } from '../types';
-import { executeBulkImport, BulkImportResult, ColumnMapping, BulkImportConfig } from '../services/bulkImporter';
+import { executeBulkImport, BulkImportResult, BulkImportConfig } from '../services/bulkImporter';
 import { useSections } from '../contexts';
-import { downloadCSVTemplate, downloadJSONTemplate, downloadExcelTemplate } from '../services/templateGenerator';
+import {
+  downloadCSVTemplate,
+  downloadJSONTemplate,
+  downloadExcelTemplate,
+  downloadConsolidationTemplate
+} from '../services/templateGenerator';
 
 interface BulkImportModalProps {
   isOpen: boolean;
   onClose: () => void;
   section: StandardSection;
   reportingYear: number;
+  /** Usuario actual (para consolidación bottom-up) */
+  currentUserId?: string;
+  currentUserName?: string;
+  /** Departamento/función responsable (para fuentes de consolidación) */
+  responsibleDepartment?: string;
 }
 
-const BulkImportModal: React.FC<BulkImportModalProps> = ({ isOpen, onClose, section, reportingYear }) => {
+const BulkImportModal: React.FC<BulkImportModalProps> = ({
+  isOpen,
+  onClose,
+  section,
+  reportingYear,
+  currentUserId = 'user-1',
+  currentUserName = 'Usuario',
+  responsibleDepartment
+}) => {
   const { sections, updateDatapoint } = useSections();
   const [file, setFile] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [result, setResult] = useState<BulkImportResult | null>(null);
   const [stage, setStage] = useState<string>('');
   const [progress, setProgress] = useState<{ processed: number; total: number } | null>(null);
+  const [consolidationMode, setConsolidationMode] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -97,24 +116,36 @@ const BulkImportModal: React.FC<BulkImportModalProps> = ({ isOpen, onClose, sect
         throw new Error('El archivo no contiene datos');
       }
       
-      // Execute bulk import
-      // The updateDatapoint function is passed to executeBulkImport
-      // which will handle the actual updates internally
+      const importConfig: BulkImportConfig = {
+        year: reportingYear,
+        dryRun: false,
+        overwriteExisting: true
+      };
+      if (consolidationMode) {
+        importConfig.consolidationMode = true;
+        importConfig.sourceColumn = 'Fuente';
+        importConfig.defaultUserId = currentUserId;
+        importConfig.defaultUserName = currentUserName;
+        if (responsibleDepartment) importConfig.responsibleDepartment = responsibleDepartment;
+      }
+
+      // Filtrar secciones por departamento cuando se importa desde Data Loading Hub
+      const sectionsToImport = responsibleDepartment
+        ? sections.map(s => ({
+            ...s,
+            datapoints: s.datapoints.filter(dp => dp.department === responsibleDepartment)
+          })).filter(s => s.datapoints.length > 0)
+        : sections;
+
       const importResult = await executeBulkImport(
         parsedData,
-        sections,
-        {
-          year: reportingYear,
-          dryRun: false,
-          overwriteExisting: true
-        },
+        sectionsToImport.length > 0 ? sectionsToImport : sections,
+        importConfig,
         (currentStage, currentProgress) => {
           setStage(currentStage);
-          if (currentProgress) {
-            setProgress(currentProgress);
-          }
+          if (currentProgress) setProgress(currentProgress);
         },
-        updateDatapoint // Pass the actual update function
+        updateDatapoint
       );
       
       setResult(importResult);
@@ -178,6 +209,31 @@ const BulkImportModal: React.FC<BulkImportModalProps> = ({ isOpen, onClose, sect
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 sm:space-y-6">
+          {/* Consolidation Mode Toggle */}
+          {!result && !file && (
+            <div className="bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <Layers className="w-4 h-4 sm:w-5 sm:h-5 text-[#0066ff]" />
+                  <div>
+                    <p className="text-xs sm:text-sm font-medium text-white">Modo consolidación bottom-up</p>
+                    <p className="text-xs text-[#6a6a6a]">Una fila por fuente (instalación/subsidiaria). Estilo Workiva/Enablon.</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setConsolidationMode(!consolidationMode)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                    consolidationMode
+                      ? 'bg-[#0066ff] text-white'
+                      : 'bg-[#1a1a1a] border border-[#2a2a2a] text-[#6a6a6a] hover:border-[#0066ff]/50'
+                  }`}
+                >
+                  {consolidationMode ? 'Activo' : 'Inactivo'}
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Template Download Section */}
           {!result && !file && (
             <div className="bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg p-4 sm:p-6">
@@ -188,32 +244,46 @@ const BulkImportModal: React.FC<BulkImportModalProps> = ({ isOpen, onClose, sect
                     Descargar Template
                   </h3>
                   <p className="text-xs sm:text-sm text-[#6a6a6a]">
-                    Descarga un template pre-configurado con todos los datapoints de esta sección para facilitar la carga masiva.
+                    {consolidationMode
+                      ? 'Template con una fila por fuente. Columna "Fuente" obligatoria.'
+                      : 'Template pre-configurado con datapoints para carga masiva.'}
                   </p>
                 </div>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
-                <button
-                  onClick={() => downloadCSVTemplate(sections, reportingYear)}
-                  className="flex items-center justify-center gap-2 px-3 sm:px-4 py-2 bg-[#1a1a1a] hover:bg-[#2a2a2a] border border-[#2a2a2a] hover:border-[#0066ff]/50 rounded-lg transition-colors text-xs sm:text-sm text-white"
-                >
-                  <FileSpreadsheet className="w-4 h-4" />
-                  CSV
-                </button>
-                <button
-                  onClick={() => downloadExcelTemplate(sections, reportingYear)}
-                  className="flex items-center justify-center gap-2 px-3 sm:px-4 py-2 bg-[#1a1a1a] hover:bg-[#2a2a2a] border border-[#2a2a2a] hover:border-[#0066ff]/50 rounded-lg transition-colors text-xs sm:text-sm text-white"
-                >
-                  <FileSpreadsheet className="w-4 h-4" />
-                  Excel (CSV)
-                </button>
-                <button
-                  onClick={() => downloadJSONTemplate(sections, reportingYear)}
-                  className="flex items-center justify-center gap-2 px-3 sm:px-4 py-2 bg-[#1a1a1a] hover:bg-[#2a2a2a] border border-[#2a2a2a] hover:border-[#0066ff]/50 rounded-lg transition-colors text-xs sm:text-sm text-white"
-                >
-                  <FileText className="w-4 h-4" />
-                  JSON
-                </button>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
+                {consolidationMode ? (
+                  <button
+                    onClick={() => downloadConsolidationTemplate(sections, reportingYear)}
+                    className="flex items-center justify-center gap-2 px-3 sm:px-4 py-2 bg-[#0066ff]/20 hover:bg-[#0066ff]/30 border border-[#0066ff]/50 rounded-lg transition-colors text-xs sm:text-sm text-white"
+                  >
+                    <Layers className="w-4 h-4" />
+                    Consolidación (CSV)
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => downloadCSVTemplate(sections, reportingYear)}
+                      className="flex items-center justify-center gap-2 px-3 sm:px-4 py-2 bg-[#1a1a1a] hover:bg-[#2a2a2a] border border-[#2a2a2a] hover:border-[#0066ff]/50 rounded-lg transition-colors text-xs sm:text-sm text-white"
+                    >
+                      <FileSpreadsheet className="w-4 h-4" />
+                      CSV
+                    </button>
+                    <button
+                      onClick={() => downloadExcelTemplate(sections, reportingYear)}
+                      className="flex items-center justify-center gap-2 px-3 sm:px-4 py-2 bg-[#1a1a1a] hover:bg-[#2a2a2a] border border-[#2a2a2a] hover:border-[#0066ff]/50 rounded-lg transition-colors text-xs sm:text-sm text-white"
+                    >
+                      <FileSpreadsheet className="w-4 h-4" />
+                      Excel (CSV)
+                    </button>
+                    <button
+                      onClick={() => downloadJSONTemplate(sections, reportingYear)}
+                      className="flex items-center justify-center gap-2 px-3 sm:px-4 py-2 bg-[#1a1a1a] hover:bg-[#2a2a2a] border border-[#2a2a2a] hover:border-[#0066ff]/50 rounded-lg transition-colors text-xs sm:text-sm text-white"
+                    >
+                      <FileText className="w-4 h-4" />
+                      JSON
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           )}
@@ -356,6 +426,20 @@ const BulkImportModal: React.FC<BulkImportModalProps> = ({ isOpen, onClose, sect
                             {mapping.confidence}%
                           </span>
                         </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Warnings (consolidation mode) */}
+              {result.warnings && result.warnings.length > 0 && (
+                <div>
+                  <h4 className="text-xs sm:text-sm font-semibold text-yellow-500 mb-2">Avisos</h4>
+                  <div className="space-y-2 max-h-32 overflow-y-auto">
+                    {result.warnings.map((w, idx) => (
+                      <div key={idx} className="p-3 bg-yellow-900/20 border border-yellow-500/50 rounded text-xs sm:text-sm">
+                        <p className="text-yellow-400">{w.message}</p>
                       </div>
                     ))}
                   </div>

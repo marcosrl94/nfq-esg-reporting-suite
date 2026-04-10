@@ -6,6 +6,10 @@ const DEFAULT_MODEL = 'gemini-3-flash-preview';
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 const MAX_FILE_CONTENT_PREVIEW = 50000; // 50KB preview for AI
 
+/** Safe Buffer check - Buffer is Node-only, undefined in browser */
+const isBuffer = (val: unknown): boolean =>
+  typeof Buffer !== 'undefined' && Buffer.isBuffer(val);
+
 // Valid file types
 const VALID_MIME_TYPES = [
   'application/pdf',
@@ -36,7 +40,7 @@ const validateFile = (file: File | Buffer): { valid: boolean; error?: string } =
     if (!VALID_MIME_TYPES.includes(file.type) && !file.name.match(/\.(pdf|xlsx|xls|doc|docx|txt|csv|json|png|jpg|jpeg|gif)$/i)) {
       return { valid: false, error: 'Invalid file type. Supported: PDF, Excel, Word, Text, CSV, JSON, Images' };
     }
-  } else if (Buffer.isBuffer(file)) {
+  } else if (isBuffer(file)) {
     if (file.length > MAX_FILE_SIZE) {
       return { valid: false, error: `Buffer size exceeds maximum allowed size of ${MAX_FILE_SIZE / 1024 / 1024}MB` };
     }
@@ -98,7 +102,7 @@ export const extractEvidenceInformation = async (
           // For other binary files, provide metadata only
           fileContent = `[Binary file: ${fileName}, Type: ${mimeType}, Size: ${(evidenceFile.size / 1024).toFixed(2)} KB]`;
         }
-      } else if (Buffer.isBuffer(evidenceFile)) {
+      } else if (isBuffer(evidenceFile)) {
         fileName = 'evidence_file';
         mimeType = 'application/octet-stream';
         fileContent = `[Buffer data: ${evidenceFile.length} bytes]`;
@@ -247,9 +251,9 @@ export const analyzeEvidenceRequirements = async (
         } else {
           fileContent = `[File: ${fileName}, Type: ${evidenceFile.type || 'unknown'}, Size: ${(evidenceFile.size / 1024).toFixed(2)} KB]`;
         }
-      } else if (Buffer.isBuffer(evidenceFile)) {
+      } else if (isBuffer(evidenceFile)) {
         fileName = 'evidence_file';
-        fileContent = `[Buffer data: ${evidenceFile.length} bytes]`;
+        fileContent = `[Buffer data: ${(evidenceFile as { length: number }).length} bytes]`;
       }
     } catch (error) {
       throw new GeminiServiceError(`Error processing file: ${error instanceof Error ? error.message : String(error)}`, 'FILE_PROCESSING_ERROR', false, error);

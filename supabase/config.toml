@@ -1,0 +1,11 @@
+# Configuración mínima para Supabase CLI (funciones y migraciones).
+# Ajusta project_id al vincular con `supabase link`.
+
+[api]
+enabled = true
+
+[functions]
+# La función valida JWT manualmente para controlar CORS y el cuerpo.
+
+[functions.gemini-proxy]
+verify_jwt = false

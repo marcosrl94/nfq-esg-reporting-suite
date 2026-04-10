@@ -13,6 +13,9 @@ export enum StandardType {
   SASB = 'SASB'
 }
 
+/** Origen de datos configurado para un indicador (canales de ingesta). */
+export type DataOrigin = 'questionnaire' | 'bulk_import' | 'erp' | 'manual';
+
 export enum Role {
   ADMIN = 'Sustainability Lead',
   EDITOR = 'Data Owner',
@@ -27,12 +30,17 @@ export enum Department {
   LEGAL = 'Legal'
 }
 
+export type ReportingFrequency = 'annual' | 'quarterly' | 'monthly';
+
 export interface User {
   id: string;
   name: string;
   role: Role;
   department: Department;
   avatar: string;
+  /** Multi-tenant: organización activa (Supabase / BFF) */
+  organizationId?: string;
+  email?: string;
 }
 
 export interface Comment {
@@ -57,9 +65,11 @@ export interface Datapoint {
   lastModified?: string;
   evidence?: string[]; 
   comments: Comment[]; 
-  // New: Cross referencing
+  // New: Cross referencing (ESRS suele inferirse por sección; otros estándares explícitos)
   mappings?: {
+    [StandardType.ESRS]?: string;
     [StandardType.GRI]?: string;
+    [StandardType.ISSB]?: string;
     [StandardType.SASB]?: string;
     [StandardType.TCFD]?: string;
   };
@@ -71,6 +81,12 @@ export interface Datapoint {
     reasoning?: string;
     lastChecked?: string;
   };
+  /** Sygris-style: frecuencia de imputación del indicador */
+  reportingFrequency?: ReportingFrequency;
+  /** Responsable asignado (cuestionario / tarea) */
+  assignedToUserId?: string;
+  /** Indicador añadido por el usuario (catálogo ampliado); no solo taxonomía base. */
+  isCustom?: boolean;
 }
 
 export interface StandardSection {
@@ -80,6 +96,18 @@ export interface StandardSection {
   datapoints: Datapoint[];
 }
 
+/** Nivel de profundidad de disclosure según materialidad del topic (ESRS) */
+export type DisclosureDepth = 'omit' | 'simplified' | 'full';
+
+/** Criterio para considerar un topic “material” frente a umbrales de impacto y financiero */
+export type MaterialityCriterion = 'both' | 'either';
+
+/** Umbrales parametrizables (0–100) para materialidad de impacto y financiera */
+export interface MaterialityThresholdConfig {
+  impactMin: number;
+  financialMin: number;
+}
+
 export interface MaterialityTopic {
   id: string;
   name: string; // e.g. "Climate Change Adaptation"
@@ -87,6 +115,10 @@ export interface MaterialityTopic {
   impactScore: number; // Y-axis (0-100)
   financialScore: number; // X-axis (0-100)
   description: string;
+  /** Código ESRS asociado (E1, E2, S1, etc.) - determina qué datapoints reportar */
+  esrsSectionCode?: string;
+  /** Nivel de profundidad: omit=no reportar, simplified=mínimo, full=completo */
+  disclosureDepth?: DisclosureDepth;
 }
 
 // ============================================
@@ -407,4 +439,17 @@ export interface ConsolidationConfig {
   deduplicationStrategy?: 'hierarchy_based' | 'temporal_overlap' | 'data_quality' | 'manual';
   minimumCoveragePercentage?: number; // Minimum % coverage required (default: 80)
   qualityThreshold?: number; // Minimum quality score for sources (default: 70)
+}
+
+/** Evento de auditoría (Workiva-style trail); persistido en Supabase o localStorage fallback */
+export interface AuditLogEntry {
+  id: string;
+  organizationId: string;
+  timestamp: string;
+  actorUserId: string;
+  actorName?: string;
+  action: 'create' | 'update' | 'approve' | 'comment' | 'export' | 'login' | 'consolidation';
+  resourceType: 'datapoint' | 'section' | 'report' | 'evidence' | 'session';
+  resourceId: string;
+  details?: Record<string, unknown>;
 }

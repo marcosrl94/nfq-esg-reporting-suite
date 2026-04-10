@@ -1,15 +1,29 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { StandardSection, WorkflowStatus, User, Department } from '../types';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
-import { AlertCircle, CheckCircle, FileText, Lock, ArrowRight, UserCircle } from 'lucide-react';
+import { PieChart, Pie, Cell, Legend, ResponsiveContainer, Tooltip } from 'recharts';
+import { KPICard } from './dashboard/KPICard';
+import { ReadinessScoring } from './dashboard/ReadinessScoring';
+import { WorkflowStatusBoard } from './dashboard/WorkflowStatusBoard';
+import { GapAnalysis } from './dashboard/GapAnalysis';
+import { ESRSCoverageHeatmap } from './dashboard/ESRSCoverageHeatmap';
+import { ReportingCycleBanner } from './dashboard/ReportingCycleBanner';
+import { RecentActivityLog } from './dashboard/RecentActivityLog';
+import { RemindersPanel } from './dashboard/RemindersPanel';
+import { VariationAlertsPanel } from './dashboard/VariationAlertsPanel';
+import type { AppRoute } from '../contexts/appRoutes';
 
 interface DashboardProps {
   sections: StandardSection[];
   currentUser: User;
   reportingYear: number;
+  onNavigate?: (route: AppRoute) => void;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ sections, currentUser, reportingYear }) => {
+const Dashboard: React.FC<DashboardProps> = ({ sections, currentUser, reportingYear, onNavigate }) => {
+  const [dataDeadline] = useState<string | undefined>(() => {
+    const d = new Date(reportingYear + 1, 2, 31); // 31 marzo año siguiente al ejercicio
+    return d.toISOString().split('T')[0];
+  });
   // Aggregate stats
   let total = 0;
   let approved = 0;
@@ -69,54 +83,104 @@ const Dashboard: React.FC<DashboardProps> = ({ sections, currentUser, reportingY
   return (
     <div className="space-y-4 lg:space-y-6 w-full max-w-full overflow-x-hidden">
       
+      {/* Reporting Cycle Banner - Sygris campaigns style */}
+      <ReportingCycleBanner
+        reportingYear={reportingYear}
+        dataDeadline={dataDeadline}
+      />
+
+      <VariationAlertsPanel sections={sections} reportingYear={reportingYear} />
+
       {/* Welcome & My Tasks Header */}
       <div className="flex flex-col md:flex-row gap-4 lg:gap-6">
          <div className="flex-1">
             <h2 className="text-xl lg:text-2xl font-bold text-white">Welcome back, {currentUser.name.split(' ')[0]}</h2>
             <p className="text-[#aaaaaa] mt-1 text-sm lg:text-base">
-               Reporting Cycle: <span className="font-bold text-[#0066ff]">FY {reportingYear}</span> | Role: <span className="font-semibold text-[#cccccc]">{currentUser.role}</span>
+               Panel de seguimiento · FY {reportingYear} | <span className="font-semibold text-[#cccccc]">{currentUser.role}</span>
             </p>
          </div>
       </div>
 
-      {/* KPI Cards - PALANTIR Style */}
+      {/* Overview indicadores reportados vs pendientes */}
+      <div className="bg-[#1e1e1e] border border-[#2a2a2a] rounded-lg p-4 lg:p-6">
+        <h3 className="text-base font-bold text-white mb-4">Indicadores ESG · Estado de reporte</h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg p-4">
+            <p className="text-xs text-[#6a6a6a] mb-1">Reportados</p>
+            <p className="text-2xl font-bold text-green-500">{approved + locked}</p>
+            <p className="text-xs text-[#6a6a6a] mt-1">Aprobados / Bloqueados</p>
+          </div>
+          <div className="bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg p-4">
+            <p className="text-xs text-[#6a6a6a] mb-1">Pendientes</p>
+            <p className="text-2xl font-bold text-amber-500">{draft + review}</p>
+            <p className="text-xs text-[#6a6a6a] mt-1">Draft / En revisión</p>
+          </div>
+          <div className="bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg p-4">
+            <p className="text-xs text-[#6a6a6a] mb-1">Total</p>
+            <p className="text-2xl font-bold text-white">{total}</p>
+            <p className="text-xs text-[#6a6a6a] mt-1">Indicadores</p>
+          </div>
+          <div className="bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg p-4 flex flex-col justify-center">
+            <p className="text-xs text-[#6a6a6a] mb-1">Progreso</p>
+            <div className="flex items-center gap-2">
+              <div className="flex-1 h-2 bg-[#2a2a2a] rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-green-500 rounded-full transition-all"
+                  style={{ width: `${total > 0 ? Math.round(((approved + locked) / total) * 100) : 0}%` }}
+                />
+              </div>
+              <span className="text-sm font-bold text-white">
+                {total > 0 ? Math.round(((approved + locked) / total) * 100) : 0}%
+              </span>
+            </div>
+            {onNavigate && (
+              <button
+                onClick={() => onNavigate({ type: 'data', tab: 'indicators' })}
+                className="mt-3 text-xs text-[#0066ff] hover:underline font-medium"
+              >
+                Ir a carga de datos (indicadores) →
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* KPI Cards - Con drill-down */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 lg:gap-6">
-        <div className="bg-[#1e1e1e] p-3 sm:p-4 lg:p-6 rounded border border-[#2a2a2a] flex items-center gap-2 sm:gap-3 lg:gap-4 min-w-0">
-           <div className="p-1.5 sm:p-2 lg:p-3 bg-[#1a1a1a] rounded-full text-[#0066ff] flex-shrink-0">
-              <FileText className="w-4 h-4 sm:w-5 sm:h-5 lg:w-6 lg:h-6" />
-           </div>
-           <div className="min-w-0 flex-1">
-              <p className="text-[10px] sm:text-xs lg:text-sm text-[#6a6a6a] truncate">Total</p>
-              <p className="text-lg sm:text-xl lg:text-2xl font-bold text-white truncate">{total}</p>
-           </div>
-        </div>
-        <div className="bg-[#1e1e1e] p-3 sm:p-4 lg:p-6 rounded border border-[#2a2a2a] flex items-center gap-2 sm:gap-3 lg:gap-4 min-w-0">
-           <div className="p-1.5 sm:p-2 lg:p-3 bg-[#1a1a1a] rounded-full text-[#00ff88] flex-shrink-0">
-              <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 lg:w-6 lg:h-6" />
-           </div>
-           <div className="min-w-0 flex-1">
-              <p className="text-[10px] sm:text-xs lg:text-sm text-[#6a6a6a] truncate">Approved</p>
-              <p className="text-lg sm:text-xl lg:text-2xl font-bold text-white truncate">{approved}</p>
-           </div>
-        </div>
-        <div className="bg-[#1e1e1e] p-3 sm:p-4 lg:p-6 rounded border border-[#2a2a2a] flex items-center gap-2 sm:gap-3 lg:gap-4 min-w-0">
-           <div className="p-1.5 sm:p-2 lg:p-3 bg-[#1a1a1a] rounded-full text-[#ffaa00] flex-shrink-0">
-              <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5 lg:w-6 lg:h-6" />
-           </div>
-           <div className="min-w-0 flex-1">
-              <p className="text-[10px] sm:text-xs lg:text-sm text-[#6a6a6a] truncate">In Review</p>
-              <p className="text-lg sm:text-xl lg:text-2xl font-bold text-white truncate">{review}</p>
-           </div>
-        </div>
-        <div className="bg-[#1e1e1e] p-3 sm:p-4 lg:p-6 rounded border border-[#2a2a2a] flex items-center gap-2 sm:gap-3 lg:gap-4 min-w-0">
-           <div className="p-1.5 sm:p-2 lg:p-3 bg-[#1a1a1a] rounded-full text-[#6a6a6a] flex-shrink-0">
-              <Lock className="w-4 h-4 sm:w-5 sm:h-5 lg:w-6 lg:h-6" />
-           </div>
-           <div className="min-w-0 flex-1">
-              <p className="text-[10px] sm:text-xs lg:text-sm text-[#6a6a6a] truncate">Locked</p>
-              <p className="text-lg sm:text-xl lg:text-2xl font-bold text-white truncate">{locked}</p>
-           </div>
-        </div>
+        <KPICard
+          label="Total Datapoints"
+          value={total}
+          trend="up"
+          trendValue={Math.round(((total - (total - approved)) / total) * 100)}
+          color="blue"
+          breakdown={{
+            byStatus: {
+              'Approved': approved,
+              'In Review': review,
+              'Draft': draft,
+              'Locked': locked
+            },
+            byFunction: deptStats
+          }}
+        />
+        <KPICard
+          label="Ready"
+          value={approved}
+          trend="stable"
+          color="green"
+        />
+        <KPICard
+          label="At Risk"
+          value={review}
+          trend="down"
+          trendValue={Math.round((review / total) * 100)}
+          color="orange"
+        />
+        <KPICard
+          label="Blocked"
+          value={locked}
+          color="gray"
+        />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
@@ -161,80 +225,98 @@ const Dashboard: React.FC<DashboardProps> = ({ sections, currentUser, reportingY
           </div>
         </div>
 
-        {/* Department Progress */}
-        <div className="bg-[#1e1e1e] p-4 lg:p-6 rounded border border-[#2a2a2a] lg:col-span-2 min-h-0">
-          <h3 className="text-sm sm:text-base lg:text-lg font-bold text-white mb-3 lg:mb-6">Readiness by Function</h3>
-          <div className="h-64 sm:h-72 lg:h-80 w-full overflow-x-auto">
-            <ResponsiveContainer width="100%" height="100%" minHeight={300}>
-              <BarChart data={departmentData} layout="vertical" margin={{ top: 5, right: 10, bottom: 5, left: 10 }}>
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#2a2a2a" />
-                <XAxis 
-                  type="number" 
-                  domain={[0, 100]} 
-                  stroke="#6a6a6a"
-                  tick={{ fill: '#aaaaaa', fontSize: 11 }}
-                  tickFormatter={(value) => `${value}%`}
-                />
-                <YAxis 
-                  dataKey="name" 
-                  type="category" 
-                  width={60}
-                  tick={{ fill: '#aaaaaa', fontSize: 11 }} 
-                  stroke="#6a6a6a"
-                />
-                <Tooltip 
-                  cursor={{fill: 'transparent'}} 
-                  contentStyle={{ 
-                    backgroundColor: '#1e1e1e', 
-                    border: '1px solid #2a2a2a',
-                    borderRadius: '4px',
-                    color: '#ffffff',
-                    fontSize: '12px'
-                  }}
-                  formatter={(value: any) => [`${value}%`, 'Readiness']}
-                />
-                <Bar dataKey="progress" fill="#0066ff" radius={[0, 4, 4, 0]} barSize={20} name="% Readiness" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+        {/* Readiness + Gap Analysis */}
+        <div className="lg:col-span-2 space-y-4">
+          <ReadinessScoring
+            scores={Object.entries(deptStats).map(([dept, stats]) => ({
+              dimension: 'function' as const,
+              dimensionValue: dept.split(' ')[0],
+              score: stats.total > 0 ? Math.round((stats.approved / stats.total) * 100) : 0,
+              total: stats.total,
+              completed: stats.approved,
+              inProgress: 0, // Calcular desde datapoints
+              blocked: 0
+            }))}
+            type="function"
+          />
+          <GapAnalysis
+            sections={sections}
+            reportingYear={reportingYear}
+            onNavigateToData={
+              onNavigate ? () => onNavigate({ type: 'data', tab: 'indicators' }) : undefined
+            }
+          />
         </div>
       </div>
 
-      {/* Action Items List - PALANTIR Style */}
-      <div className="bg-[#1e1e1e] border border-[#2a2a2a] rounded overflow-hidden">
-         <div className="p-4 border-b border-[#2a2a2a] bg-[#1a1a1a] flex items-center justify-between">
-            <h3 className="font-bold text-white flex items-center gap-2 text-sm lg:text-base">
-               <UserCircle className="w-4 h-4 lg:w-5 lg:h-5 text-[#0066ff]" /> My Pending Actions
-            </h3>
-            <span className="bg-[#0066ff] text-white text-xs font-bold px-2.5 py-0.5 rounded-full">{myTasks.length}</span>
-         </div>
-         {myTasks.length > 0 ? (
-            <div className="divide-y divide-[#2a2a2a]">
-               {myTasks.map(task => (
-                  <div key={task.id} className="p-4 hover:bg-[#1a1a1a] transition-colors flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                     <div className="flex items-start gap-3 flex-1 min-w-0">
-                        <div className={`mt-1 w-2 h-2 rounded-full flex-shrink-0 ${task.status === 'Draft' ? 'bg-[#6a6a6a]' : 'bg-[#ffaa00]'}`} />
-                        <div className="min-w-0 flex-1">
-                           <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-mono text-xs font-bold text-[#6a6a6a] bg-[#1a1a1a] px-1.5 rounded">{task.code}</span>
-                              <span className="text-xs text-[#6a6a6a]">{task.department}</span>
-                           </div>
-                           <p className="text-sm font-medium text-white mt-0.5 truncate">{task.name}</p>
-                        </div>
-                     </div>
-                     <button className="text-[#0066ff] hover:text-[#00d4ff] text-sm font-medium flex items-center gap-1 flex-shrink-0">
-                        Open <ArrowRight className="w-4 h-4" />
-                     </button>
-                  </div>
-               ))}
-            </div>
-         ) : (
-            <div className="p-8 text-center text-[#6a6a6a]">
-               <CheckCircle className="w-8 h-8 mx-auto text-[#00ff88] mb-2 opacity-50" />
-               <p className="text-sm">All caught up! No pending data entry tasks assigned to you.</p>
-            </div>
-         )}
+      {/* ESRS Heatmap + Activity Log + Recordatorios - Sygris style */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
+        <ESRSCoverageHeatmap sections={sections} reportingYear={reportingYear} />
+        <RecentActivityLog sections={sections} limit={8} />
+        <RemindersPanel />
       </div>
+
+      {/* Workflow Status Board */}
+      <WorkflowStatusBoard
+        stages={[
+          {
+            stage: WorkflowStatus.DRAFT,
+            count: draft,
+            items: sections.flatMap(s => 
+              s.datapoints
+                .filter(d => d.status === WorkflowStatus.DRAFT && d.ownerId === currentUser.id)
+                .map(d => ({
+                  id: d.id,
+                  code: d.code,
+                  name: d.name,
+                  owner: {
+                    id: d.ownerId || currentUser.id,
+                    name: currentUser.name,
+                    avatar: currentUser.avatar
+                  },
+                  dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+                  priority: 'medium' as const,
+                  status: d.status
+                }))
+            )
+          },
+          {
+            stage: WorkflowStatus.REVIEW,
+            count: review,
+            items: sections.flatMap(s => 
+              s.datapoints
+                .filter(d => d.status === WorkflowStatus.REVIEW)
+                .map(d => ({
+                  id: d.id,
+                  code: d.code,
+                  name: d.name,
+                  owner: {
+                    id: d.ownerId || currentUser.id,
+                    name: currentUser.name,
+                    avatar: currentUser.avatar
+                  },
+                  dueDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+                  priority: 'high' as const,
+                  status: d.status
+                }))
+            )
+          },
+          {
+            stage: WorkflowStatus.APPROVED,
+            count: approved,
+            items: []
+          },
+          {
+            stage: WorkflowStatus.LOCKED,
+            count: locked,
+            items: []
+          }
+        ]}
+        onItemClick={(item) => {
+          // Navegar a datapoint
+          console.log('Navigate to datapoint:', item.id);
+        }}
+      />
       
     </div>
   );

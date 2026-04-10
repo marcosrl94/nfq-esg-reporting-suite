@@ -86,6 +86,14 @@ body {
   padding: 0;
 }
 
+/* Supervivencia sin Tailwind CDN: el árbol React siempre legible */
+#root {
+  min-height: 100vh;
+  color: var(--text-primary);
+  background-color: var(--bg-primary);
+  font-family: var(--font-family);
+}
+
 /* Custom Scrollbar - PALANTIR Style */
 ::-webkit-scrollbar {
   width: 8px;
@@ -216,4 +224,10 @@ body {
 
 .palantir-fade-in {
   animation: palantir-fade-in var(--transition-base);
+}
+
+/* Vite Error Overlay - Ajuste de orden DOM */
+vite-error-overlay {
+  order: 3;
+  z-index: 9999;
 }

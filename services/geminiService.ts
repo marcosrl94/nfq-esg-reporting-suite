@@ -1,5 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { Datapoint, MaterialityTopic } from '../types';
+import { isGeminiProxyEnabled, invokeGeminiGenerateText } from './geminiInvocation';
 
 // ============================================
 // ERROR TYPES & HANDLING
@@ -44,6 +45,10 @@ export class NetworkError extends GeminiServiceError {
 
 const DEFAULT_MODEL = 'gemini-3-flash-preview';
 const MAX_RETRIES = 3;
+
+/** Safe Buffer check - Buffer is Node-only, undefined in browser */
+const isBuffer = (val: unknown): boolean =>
+  typeof Buffer !== 'undefined' && Buffer.isBuffer(val);
 const INITIAL_RETRY_DELAY = 1000; // 1 second
 const MAX_RETRY_DELAY = 10000; // 10 seconds
 const RATE_LIMIT_DELAY = 2000; // 2 seconds between requests
@@ -71,6 +76,26 @@ export const getClient = (): GoogleGenAI => {
   
   return new GoogleGenAI({ apiKey });
 };
+
+/**
+ * Generación de texto: proxy Edge (sin clave en bundle) o SDK local.
+ */
+export async function generateContentUnified(params: {
+  model: string;
+  contents: string;
+  config?: { responseMimeType?: string };
+}): Promise<string> {
+  if (isGeminiProxyEnabled()) {
+    return invokeGeminiGenerateText(params);
+  }
+  const ai = getClient();
+  const response = await ai.models.generateContent({
+    model: params.model,
+    contents: params.contents,
+    config: params.config,
+  });
+  return response.text || (response as { response?: { text?: string } }).response?.text || '';
+}
 
 // ============================================
 // UTILITY FUNCTIONS
@@ -269,7 +294,6 @@ export const generateNarrativeStream = async (
   onChunk: (text: string) => void
 ): Promise<void> => {
   await retryWithBackoff(async () => {
-    const ai = getClient();
     const modelId = DEFAULT_MODEL;
 
     // Filter and format data for the AI, including history
@@ -303,17 +327,27 @@ export const generateNarrativeStream = async (
     `;
 
     try {
-      // Use generateContentStream with correct API format
-      const responseStream = await ai.models.generateContentStream({
-        model: modelId,
-        contents: prompt,
-      });
+      if (isGeminiProxyEnabled()) {
+        const text = await generateContentUnified({
+          model: modelId,
+          contents: prompt,
+        });
+        const tokens = text.match(/\S+\s*/g) || [text];
+        for (const t of tokens) {
+          if (t) onChunk(t);
+        }
+      } else {
+        const ai = getClient();
+        const responseStream = await ai.models.generateContentStream({
+          model: modelId,
+          contents: prompt,
+        });
 
-      // Process stream chunks
-      for await (const chunk of responseStream) {
-        const text = chunk.text || chunk.response?.text || '';
-        if (text) {
-          onChunk(text);
+        for await (const chunk of responseStream) {
+          const text = chunk.text || chunk.response?.text || '';
+          if (text) {
+            onChunk(text);
+          }
         }
       }
     } catch (error) {
@@ -326,7 +360,6 @@ export const generateNarrativeStream = async (
 
 export const checkConsistency = async (datapoints: Datapoint[]): Promise<string> => {
   return await retryWithBackoff(async () => {
-    const ai = getClient();
     const modelId = DEFAULT_MODEL;
 
     const prompt = `
@@ -342,12 +375,9 @@ export const checkConsistency = async (datapoints: Datapoint[]): Promise<string>
     `;
 
     try {
-      const response = await ai.models.generateContent({
-        model: modelId,
-        contents: prompt,
-      });
-
-      const responseText = response.text || response.response?.text || "No consistency issues found.";
+      const responseText =
+        (await generateContentUnified({ model: modelId, contents: prompt })) ||
+        'No consistency issues found.';
       return responseText;
     } catch (error) {
       console.error('Error in checkConsistency:', error);
@@ -364,7 +394,6 @@ export const generateMaterialityMatrix = async (
   contextLevel: string = "Group"
 ): Promise<MaterialityTopic[]> => {
   return await retryWithBackoff(async () => {
-    const ai = getClient();
     const modelId = DEFAULT_MODEL;
 
     const prompt = `
@@ -391,6 +420,10 @@ export const generateMaterialityMatrix = async (
       1. "Financial Materiality" (X-axis: impact on enterprise value, capex, access to finance).
       2. "Impact Materiality" (Y-axis: impact on people, environment, human rights).
       
+      For each material topic, also assign:
+      - "esrsSectionCode": The ESRS standard code (E1, E2, E3, E4, E5, S1, S2, S3, S4, G1) that this topic maps to.
+      - "disclosureDepth": "full" for critical topics (combined score > 80), "simplified" for material (50-80), "omit" only if truly not material (score < 30).
+      
       Return ONLY a JSON array with the following structure:
       [
         {
@@ -399,23 +432,23 @@ export const generateMaterialityMatrix = async (
           "category": "Environmental" | "Social" | "Governance",
           "financialScore": 85,
           "impactScore": 90,
-          "description": "Brief reason linking sectors, countries, and user input."
+          "description": "Brief reason linking sectors, countries, and user input.",
+          "esrsSectionCode": "E1",
+          "disclosureDepth": "full"
         }
       ]
     `;
 
     try {
-      const response = await ai.models.generateContent({
+      const jsonStr = await generateContentUnified({
         model: modelId,
         contents: prompt,
-        config: {
-          responseMimeType: "application/json"
-        }
+        config: { responseMimeType: 'application/json' },
       });
 
-      const jsonStr = response.text || "[]";
+      const jsonStrSafe = jsonStr || '[]';
       try {
-        return JSON.parse(jsonStr) as MaterialityTopic[];
+        return JSON.parse(jsonStrSafe) as MaterialityTopic[];
       } catch (e) {
         console.error("Error parsing materiality JSON", e);
         return [];
@@ -443,7 +476,6 @@ export const verifyEvidence = async (
   lastChecked?: string;
 }> => {
   return await retryWithBackoff(async () => {
-    const ai = getClient();
     const modelId = DEFAULT_MODEL;
 
     let fileContent: string = '';
@@ -463,11 +495,11 @@ export const verifyEvidence = async (
         const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
         fileContent = `[Base64 encoded ${evidenceFile.type} file: ${base64.substring(0, 1000)}...]`;
       }
-    } else if (Buffer.isBuffer(evidenceFile)) {
+    } else if (isBuffer(evidenceFile)) {
       fileName = 'evidence_file';
       mimeType = 'application/octet-stream';
-      // Convert Buffer to base64
-      fileContent = `[Base64 encoded file: ${evidenceFile.toString('base64').substring(0, 1000)}...]`;
+      // Convert Buffer to base64 (Node.js only)
+      fileContent = `[Base64 encoded file: ${(evidenceFile as { toString: (enc: string) => string }).toString('base64').substring(0, 1000)}...]`;
     } else {
       // Legacy: filename string (fallback for demo)
       fileName = evidenceFile;
@@ -504,13 +536,13 @@ export const verifyEvidence = async (
     `;
 
     try {
-      const response = await ai.models.generateContent({
+      const raw = await generateContentUnified({
         model: modelId,
         contents: prompt,
-        config: { responseMimeType: "application/json" }
+        config: { responseMimeType: 'application/json' },
       });
 
-      const result = JSON.parse(response.text || "{}");
+      const result = JSON.parse(raw || '{}');
       
       return {
         status: result.status || 'unverified',

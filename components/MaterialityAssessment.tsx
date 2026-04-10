@@ -1,10 +1,14 @@
-import React, { useState } from 'react';
-import { ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, LabelList } from 'recharts';
-import { Target, RefreshCw, Info, ArrowRight, X, Plus, FileText, Upload } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { Target, RefreshCw, X, FileText } from 'lucide-react';
 import { generateMaterialityMatrix } from '../services/geminiService';
-import { MaterialityTopic } from '../types';
+import { MaterialityTopic, DisclosureDepth, StandardSection } from '../types';
+import { useMateriality } from '../contexts';
 import { useMobile } from '../hooks/useMobile';
 import { getSplitLayout } from '../utils/responsive';
+import { inferEsrsSectionFromTopic } from '../services/materialityDiagnostics';
+
+const EXPOSURE_STORAGE_KEY = 'nfq_materiality_exposure_v1';
 
 const AVAILABLE_SECTORS = [
   'Construction & Engineering', 
@@ -32,15 +36,48 @@ const AVAILABLE_COUNTRIES = [
   'France'
 ];
 
-const MaterialityAssessment: React.FC = () => {
+const DEPTH_LABELS: Record<DisclosureDepth, string> = {
+  omit: 'Omitir',
+  simplified: 'Simplificado',
+  full: 'Completo'
+};
+
+interface MaterialityAssessmentProps {
+  sections: StandardSection[];
+  reportingYear: number;
+}
+
+const MaterialityAssessment: React.FC<MaterialityAssessmentProps> = ({
+  sections,
+  reportingYear
+}) => {
   const { isMobile } = useMobile();
+  const { topics, setTopics, updateTopicDepth } = useMateriality();
   const splitLayout = getSplitLayout(true);
   const [selectedSectors, setSelectedSectors] = useState<string[]>(['Construction & Engineering', 'Toll Roads']);
   const [selectedCountries, setSelectedCountries] = useState<string[]>(['USA', 'Spain', 'Poland']);
   const [userContext, setUserContext] = useState('');
   const [contextLevel, setContextLevel] = useState('Group'); // Group or Subsidiary
-  const [topics, setTopics] = useState<MaterialityTopic[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(EXPOSURE_STORAGE_KEY);
+      if (!raw) return;
+      const p = JSON.parse(raw) as {
+        sectors?: string[];
+        countries?: string[];
+        contextLevel?: string;
+        userContext?: string;
+      };
+      if (Array.isArray(p.sectors) && p.sectors.length > 0) setSelectedSectors(p.sectors);
+      if (Array.isArray(p.countries) && p.countries.length > 0) setSelectedCountries(p.countries);
+      if (p.contextLevel === 'Group' || p.contextLevel === 'Subsidiary') setContextLevel(p.contextLevel);
+      if (typeof p.userContext === 'string') setUserContext(p.userContext);
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   const toggleSelection = (item: string, list: string[], setList: React.Dispatch<React.SetStateAction<string[]>>) => {
     if (list.includes(item)) {
@@ -57,7 +94,30 @@ const MaterialityAssessment: React.FC = () => {
     setIsLoading(true);
     try {
       const results = await generateMaterialityMatrix(selectedSectors, selectedCountries, userContext, contextLevel);
-      setTopics(results);
+      // Enriquecer con esrsSectionCode y disclosureDepth si faltan
+      const enriched = results.map((t, i) => {
+        const combined = (t.impactScore || 0) + (t.financialScore || 0);
+        let depth: DisclosureDepth = t.disclosureDepth || (combined > 160 ? 'full' : combined > 100 ? 'simplified' : 'omit');
+        if (!t.esrsSectionCode) {
+          const code = inferEsrsSectionFromTopic(t);
+          return { ...t, id: t.id || `t${i}`, esrsSectionCode: code, disclosureDepth: depth };
+        }
+        return { ...t, id: t.id || `t${i}`, disclosureDepth: depth };
+      });
+      setTopics(enriched);
+      try {
+        localStorage.setItem(
+          EXPOSURE_STORAGE_KEY,
+          JSON.stringify({
+            sectors: selectedSectors,
+            countries: selectedCountries,
+            contextLevel,
+            userContext
+          })
+        );
+      } catch {
+        /* ignore */
+      }
     } catch (error) {
       console.error(error);
     } finally {
@@ -101,10 +161,12 @@ const MaterialityAssessment: React.FC = () => {
         <div className="bg-[#1e1e1e] p-4 sm:p-5 rounded-lg border border-[#2a2a2a]">
           <h2 className="text-base sm:text-lg font-bold text-white mb-2 flex items-center gap-2">
             <Target className="w-4 h-4 sm:w-5 sm:h-5 text-[#0066ff]" />
-            Double Materiality Engine
+            Materialidad — Paso 1
           </h2>
           <p className="text-[10px] sm:text-xs text-[#aaaaaa] mb-4">
-            Configure exposure and input existing analysis to generate an ESRS-compliant materiality matrix.
+            La materialidad determina qué topics ESRS reportar y con qué nivel de profundidad. Los datapoints de la
+            vista Data se filtran según esta evaluación. Los segmentos y geografías se guardan para
+            <span className="text-[#6a9a9a]"> Alcance auditoría</span> en Validación y gobierno.
           </p>
 
           <div className="space-y-4 sm:space-y-5">
@@ -219,20 +281,35 @@ const MaterialityAssessment: React.FC = () => {
         {topics.length > 0 && (
            <div className="bg-[#1e1e1e] border border-[#2a2a2a] rounded-lg flex-1 flex flex-col min-h-0">
               <div className="p-2 sm:p-3 bg-[#1a1a1a] border-b border-[#2a2a2a] font-bold text-[10px] sm:text-xs text-white uppercase tracking-wider">
-                 Material Topics Ranked
+                 Topics Materiales → Datapoints a reportar
               </div>
               <div className="overflow-y-auto flex-1 p-0">
                  {topics.sort((a, b) => (b.impactScore + b.financialScore) - (a.impactScore + a.financialScore)).map((topic, i) => (
-                    <div key={i} className="p-2 sm:p-3 border-b border-[#2a2a2a] hover:bg-[#1a1a1a] transition-colors">
+                    <div key={topic.id || i} className="p-2 sm:p-3 border-b border-[#2a2a2a] hover:bg-[#1a1a1a] transition-colors">
                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-start gap-1 sm:gap-0 mb-1">
                           <span className="text-xs sm:text-sm font-medium text-white leading-tight break-words flex-1">{topic.name}</span>
                           <span className={`text-[8px] sm:text-[9px] font-bold px-1.5 py-0.5 rounded ml-0 sm:ml-2 whitespace-nowrap text-white flex-shrink-0`} style={{ backgroundColor: getColor(topic.category) }}>
-                            {(topic.impactScore + topic.financialScore) / 2 > 80 ? 'CRITICAL' : 'MATERIAL'}
+                            {(topic.impactScore + topic.financialScore) / 2 > 80 ? 'CRÍTICO' : 'MATERIAL'}
                           </span>
                        </div>
-                       <div className="flex gap-3 text-[9px] sm:text-[10px] text-[#6a6a6a] font-mono mt-1">
-                           <span>IMP: {topic.impactScore}</span>
-                           <span>FIN: {topic.financialScore}</span>
+                       <div className="flex flex-wrap items-center gap-2 mt-1">
+                         <span className="text-[9px] sm:text-[10px] text-[#6a6a6a] font-mono">
+                           IMP: {topic.impactScore} | FIN: {topic.financialScore}
+                         </span>
+                         {topic.esrsSectionCode && (
+                           <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#0066ff]/20 text-[#0066ff] font-mono">
+                             {topic.esrsSectionCode}
+                           </span>
+                         )}
+                         <select
+                           value={topic.disclosureDepth || 'full'}
+                           onChange={(e) => updateTopicDepth(topic.id, e.target.value as DisclosureDepth)}
+                           className="text-[9px] sm:text-[10px] bg-[#0a0a0a] border border-[#2a2a2a] rounded px-1.5 py-0.5 text-white focus:outline-none focus:border-[#0066ff]"
+                         >
+                           <option value="full">{DEPTH_LABELS.full}</option>
+                           <option value="simplified">{DEPTH_LABELS.simplified}</option>
+                           <option value="omit">{DEPTH_LABELS.omit}</option>
+                         </select>
                        </div>
                     </div>
                  ))}

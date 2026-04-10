@@ -1,27 +1,56 @@
-import React, { useState } from 'react';
-import { LayoutDashboard, Database, PenTool, FileBarChart, Settings, Bell, ShieldCheck, ChevronDown, Target, BookOpen, Menu, X, LogOut } from 'lucide-react';
+import React, { useState, useEffect, useContext, createContext } from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { Settings, Bell, ShieldCheck, Menu, X, LogOut } from 'lucide-react';
 import { useMobile } from './hooks/useMobile';
+import { useRemoteSectionsQuery, useRemoteUsersQuery } from './hooks/useEnterpriseData';
+import { isApiConfigured, setApiAccessToken } from './services/apiService';
+import { supabase } from './services/supabaseClient';
+import { getSessionUser, signOutSupabase } from './services/authService';
+import {
+  setCurrentActorId,
+  resolveOrganizationIdForApi,
+  getActiveReportingCycleId,
+  isWorkspaceOnboardingDone,
+  setWorkspaceOnboardingDone,
+  setActiveOrganizationId,
+  setActiveReportingCycleId
+} from './services/dataPlane';
+import { recordAuditEvent } from './services/auditLogService';
 import Dashboard from './components/Dashboard';
-import DataInput from './components/DataInput';
-import NarrativeEngine from './components/NarrativeEngine';
-import MaterialityAssessment from './components/MaterialityAssessment';
-import IndexComposer from './components/IndexComposer';
-import FinalReport from './components/FinalReport';
+import DataHub from './components/DataHub';
+import ReportingHub from './components/ReportingHub';
+import GovernanceHub from './components/GovernanceHub';
 import Login from './components/Login';
+import { WorkspaceOnboarding } from './components/WorkspaceOnboarding';
+import { Breadcrumbs } from './components/navigation/Breadcrumbs';
+import { AppSidebar } from './components/navigation/AppSidebar';
 import { StandardSection, WorkflowStatus, User, Role, Department, StandardType } from './types';
-import { SectionsProvider, UsersProvider, AppViewProvider, useSections, useUsers, useAppView, View } from './contexts';
+import {
+  SectionsProvider,
+  UsersProvider,
+  AppViewProvider,
+  MaterialityProvider,
+  useSections,
+  useUsers,
+  useAppView,
+  breadcrumbItemsForRoute,
+  routePageTitle,
+  routePillarLabel,
+} from './contexts';
+import type { AppRoute } from './contexts';
 
 // Global Configuration
 export const REPORTING_YEAR = 2024;
 
-// --- MOCK USERS ---
+/** Solo para demo local / fallback si falla la API; con Supabase activo se sustituyen por `fetchUsers`. */
 const MOCK_USERS: User[] = [
   { id: 'u1', name: 'Maria Gonzalez', role: Role.ADMIN, department: Department.SUSTAINABILITY, avatar: 'MG' },
   { id: 'u2', name: 'Carlos Ruiz', role: Role.EDITOR, department: Department.ENVIRONMENT, avatar: 'CR' },
   { id: 'u3', name: 'Sofia Lee', role: Role.EDITOR, department: Department.HR, avatar: 'SL' },
+  { id: 'u4', name: 'Ana Auditor', role: Role.VIEWER, department: Department.SUSTAINABILITY, avatar: 'AA' },
 ];
 
-// --- MOCK DATA INITIALIZATION ---
+/** Dataset demo alineado con ESRS de ejemplo; reemplazado por `fetchSections` cuando hay API. */
 const MOCK_DATA: StandardSection[] = [
   {
     id: 's1',
@@ -95,14 +124,130 @@ const MOCK_DATA: StandardSection[] = [
   }
 ];
 
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: { retry: 1, refetchOnWindowFocus: false }
+  }
+});
+
+const PackEnabledContext = createContext<(enabled: boolean) => void>(() => {});
+
+type WorkspacePhase = 'loading' | 'need' | 'ready';
+
 // Inner App Component that uses hooks
-const AppContent: React.FC = () => {
-  const { currentView, setCurrentView } = useAppView();
+type AppContentProps = {
+  sectionsQuery: ReturnType<typeof useRemoteSectionsQuery>;
+};
+
+const AppContent: React.FC<AppContentProps> = ({ sectionsQuery }) => {
+  const setPackEnabled = useContext(PackEnabledContext);
+  const { currentRoute, setCurrentRoute } = useAppView();
   const { sections, activeSectionId, setActiveSectionId, updateDatapoint } = useSections();
   const { currentUser, setCurrentUser, users } = useUsers();
-  const { isMobile, isTablet } = useMobile();
+  const { isMobile } = useMobile();
   const [sidebarOpen, setSidebarOpen] = useState(!isMobile); // Closed on mobile by default
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [organizationLabel, setOrganizationLabel] = useState<string | null>(null);
+  const [workspacePhase, setWorkspacePhase] = useState<WorkspacePhase>(() =>
+    !isApiConfigured() ? 'ready' : 'loading'
+  );
+
+  useEffect(() => {
+    if (!supabase) return;
+    void supabase.auth.getSession().then(({ data: { session } }) => {
+      setApiAccessToken(session?.access_token ?? null);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      setApiAccessToken(session?.access_token ?? null);
+    });
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    void getSessionUser().then(u => {
+      if (u) {
+        setCurrentActorId(u.id);
+        setCurrentUser(u);
+        setIsAuthenticated(true);
+      }
+    });
+  }, [setCurrentUser]);
+
+  useEffect(() => {
+    if (!supabase || !isAuthenticated) {
+      setOrganizationLabel(null);
+      return;
+    }
+    const orgId = resolveOrganizationIdForApi();
+    void supabase
+      .from('organizations')
+      .select('name')
+      .eq('id', orgId)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (!error && data?.name) {
+          setOrganizationLabel(String(data.name));
+        } else {
+          setOrganizationLabel(orgId.slice(0, 8) + '…');
+        }
+      });
+  }, [isAuthenticated, currentUser?.organizationId]);
+
+  useEffect(() => {
+    setPackEnabled(isApiConfigured() && isAuthenticated && workspacePhase === 'ready');
+  }, [isAuthenticated, workspacePhase, setPackEnabled]);
+
+  useEffect(() => {
+    if (!isApiConfigured()) {
+      setWorkspacePhase('ready');
+      return;
+    }
+    if (!isAuthenticated) {
+      setWorkspacePhase('loading');
+      return;
+    }
+    if (!supabase) {
+      setWorkspacePhase('ready');
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      if (isWorkspaceOnboardingDone() && getActiveReportingCycleId()) {
+        if (!cancelled) setWorkspacePhase('ready');
+        return;
+      }
+      const { data: orgs, error: orgErr } = await supabase
+        .from('organizations')
+        .select('id')
+        .order('name');
+      if (cancelled) return;
+      if (orgErr || !orgs?.length) {
+        setWorkspacePhase('need');
+        return;
+      }
+      const targetOrg =
+        currentUser?.organizationId && orgs.some((o) => o.id === currentUser.organizationId)
+          ? currentUser.organizationId!
+          : orgs[0].id;
+      const { data: cycles } = await supabase
+        .from('reporting_cycles')
+        .select('id')
+        .eq('organization_id', targetOrg)
+        .order('period_start', { ascending: false, nullsFirst: false });
+      if (cancelled) return;
+      if (orgs.length === 1 && cycles?.length === 1) {
+        setActiveOrganizationId(orgs[0].id);
+        setActiveReportingCycleId(cycles[0].id);
+        setWorkspaceOnboardingDone(true);
+        setWorkspacePhase('ready');
+        return;
+      }
+      setWorkspacePhase('need');
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, currentUser?.organizationId]);
 
   // Filter sections and datapoints based on user role and department (first-person view)
   const filteredSections = React.useMemo(() => {
@@ -146,12 +291,30 @@ const AppContent: React.FC = () => {
 
   const activeSection = filteredSections.find(s => s.id === activeSectionId) || filteredSections[0];
 
+  const getBreadcrumbItems = (route: AppRoute) => {
+    return breadcrumbItemsForRoute(route).map((b) => ({
+      label: b.label,
+      route: b.route,
+    }));
+  };
+
+
   const handleLogin = (user: User) => {
+    setCurrentActorId(user.id);
     setCurrentUser(user);
     setIsAuthenticated(true);
+    void recordAuditEvent({
+      actorUserId: user.id,
+      actorName: user.name,
+      action: 'login',
+      resourceType: 'session',
+      resourceId: user.id
+    });
   };
 
   const handleLogout = () => {
+    void signOutSupabase();
+    setCurrentActorId('anonymous');
     setIsAuthenticated(false);
     setCurrentUser({
       id: 'anonymous',
@@ -162,14 +325,66 @@ const AppContent: React.FC = () => {
     });
   };
 
+  const dataLoading =
+    isAuthenticated &&
+    isApiConfigured() &&
+    sectionsQuery.isPending &&
+    !sectionsQuery.isError;
+
   // Show login if not authenticated
   if (!isAuthenticated) {
     return <Login users={users} onLogin={handleLogin} />;
   }
+
+  if (isApiConfigured() && workspacePhase === 'loading') {
+    return (
+      <div
+        className="min-h-screen bg-black text-white flex items-center justify-center"
+        style={{
+          minHeight: '100vh',
+          background: '#000000',
+          color: '#ffffff',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontFamily: 'Inter, system-ui, sans-serif'
+        }}
+      >
+        <p style={{ color: '#9ca3af', margin: 0 }}>Preparando espacio de trabajo…</p>
+      </div>
+    );
+  }
+
+  if (isApiConfigured() && workspacePhase === 'need') {
+    return (
+      <WorkspaceOnboarding
+        defaultOrganizationId={currentUser?.organizationId}
+        onComplete={() => setWorkspacePhase('ready')}
+      />
+    );
+  }
+
+  if (dataLoading) {
+    return (
+      <div
+        className="min-h-screen bg-black text-white flex items-center justify-center"
+        style={{
+          minHeight: '100vh',
+          background: '#000000',
+          color: '#ffffff',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontFamily: 'Inter, system-ui, sans-serif'
+        }}
+      >
+        <p style={{ color: '#9ca3af', margin: 0 }}>Cargando datos de reporting…</p>
+      </div>
+    );
+  }
   
-  // Close sidebar when navigating on mobile
-  const handleViewChange = (view: View) => {
-    setCurrentView(view);
+  const handleRouteChange = (route: AppRoute) => {
+    setCurrentRoute(route);
     if (isMobile) {
       setSidebarOpen(false);
     }
@@ -184,35 +399,55 @@ const AppContent: React.FC = () => {
     }
   }
 
-  // --- RENDER CONTENT ---
   const renderContent = () => {
-    switch (currentView) {
-      case View.DASHBOARD:
-        return <Dashboard sections={filteredSections} currentUser={currentUser} reportingYear={REPORTING_YEAR} />;
-      case View.MATERIALITY:
-        return <MaterialityAssessment />;
-      case View.DATA:
-        return activeSection ? (
-          <DataInput section={activeSection} onUpdateDatapoint={updateDatapoint} currentUser={currentUser} users={users} reportingYear={REPORTING_YEAR} />
-        ) : (
-          <div className="p-6 text-center text-[#6a6a6a]">
-            <p>No hay secciones disponibles para tu perfil.</p>
-          </div>
+    const dataSections = filteredSections.length > 0 ? filteredSections : sections;
+
+    switch (currentRoute.type) {
+      case 'dashboard':
+        return (
+          <Dashboard
+            sections={filteredSections}
+            currentUser={currentUser}
+            reportingYear={REPORTING_YEAR}
+            onNavigate={setCurrentRoute}
+          />
         );
-      case View.NARRATIVE:
-        return activeSection ? (
-          <NarrativeEngine section={activeSection} reportingYear={REPORTING_YEAR} />
-        ) : (
-          <div className="p-6 text-center text-[#6a6a6a]">
-            <p>No hay secciones disponibles para tu perfil.</p>
-          </div>
+      case 'data':
+        return (
+          <DataHub
+            sections={dataSections}
+            reportingYear={REPORTING_YEAR}
+            currentUser={currentUser}
+            users={users}
+            onUpdateDatapoint={updateDatapoint}
+            activeTab={currentRoute.tab}
+            onTabChange={(tab) => setCurrentRoute({ type: 'data', tab })}
+          />
         );
-      case View.INDEX:
-        return <IndexComposer sections={filteredSections} />;
-      case View.REPORT:
-        return <FinalReport reportingYear={REPORTING_YEAR} />;
+      case 'governance':
+        return (
+          <GovernanceHub
+            sections={dataSections}
+            reportingYear={REPORTING_YEAR}
+            currentUser={currentUser}
+            activeTab={currentRoute.tab}
+            onTabChange={(tab) => setCurrentRoute({ type: 'governance', tab })}
+            showAuditorTab={currentUser.role === Role.VIEWER}
+          />
+        );
+      case 'reporting':
+        return (
+          <ReportingHub
+            sections={filteredSections}
+            reportingYear={REPORTING_YEAR}
+            activeSectionId={activeSectionId}
+            setActiveSectionId={setActiveSectionId}
+            activeTab={currentRoute.tab}
+            onTabChange={(tab) => setCurrentRoute({ type: 'reporting', tab })}
+          />
+        );
       default:
-        return <div>Select a view</div>;
+        return <div className="text-[#6a6a6a]">Selecciona un área en el menú.</div>;
     }
   };
 
@@ -261,6 +496,11 @@ const AppContent: React.FC = () => {
              <div className="flex-1 min-w-0">
                <p className="text-sm font-medium text-white truncate">{currentUser.name}</p>
                <p className="text-xs text-[#6a6a6a] truncate">{currentUser.role}</p>
+               {organizationLabel && (
+                 <p className="text-[10px] text-[#5a5a5a] truncate mt-0.5" title={resolveOrganizationIdForApi()}>
+                   Org: {organizationLabel}
+                 </p>
+               )}
              </div>
            </div>
            <button
@@ -272,85 +512,11 @@ const AppContent: React.FC = () => {
            </button>
         </div>
 
-        <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-          <div className="text-xs font-semibold uppercase tracking-wider text-[#6a6a6a] px-3 mb-2">
-             Start Here
-          </div>
-          <button 
-            onClick={() => handleViewChange(View.DASHBOARD)}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded transition-colors ${
-              currentView === View.DASHBOARD 
-                ? 'bg-[#0066ff] text-white' 
-                : 'hover:bg-[#1a1a1a] text-[#cccccc]'
-            }`}
-          >
-            <LayoutDashboard className="w-5 h-5" />
-            <span className="font-medium">Dashboard</span>
-          </button>
-          <button 
-            onClick={() => handleViewChange(View.MATERIALITY)}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded transition-colors ${
-              currentView === View.MATERIALITY 
-                ? 'bg-[#0066ff] text-white' 
-                : 'hover:bg-[#1a1a1a] text-[#cccccc]'
-            }`}
-          >
-            <Target className="w-5 h-5" />
-            <span className="font-medium">Double Materiality</span>
-          </button>
-
-          <div className="pt-4 pb-2 text-xs font-semibold uppercase tracking-wider text-[#6a6a6a] px-3">
-             Data & Governance
-          </div>
-          <button 
-            onClick={() => handleViewChange(View.DATA)}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded transition-colors ${
-              currentView === View.DATA 
-                ? 'bg-[#0066ff] text-white' 
-                : 'hover:bg-[#1a1a1a] text-[#cccccc]'
-            }`}
-          >
-            <Database className="w-5 h-5" />
-            <span className="font-medium">Data Ingestion</span>
-          </button>
-          
-          <div className="pt-4 pb-2 text-xs font-semibold uppercase tracking-wider text-[#6a6a6a] px-3">
-             Reporting & Output
-          </div>
-          <button 
-            onClick={() => handleViewChange(View.NARRATIVE)}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded transition-colors ${
-              currentView === View.NARRATIVE 
-                ? 'bg-[#0066ff] text-white' 
-                : 'hover:bg-[#1a1a1a] text-[#cccccc]'
-            }`}
-          >
-            <PenTool className="w-5 h-5" />
-            <span className="font-medium">Narrative Engine</span>
-          </button>
-          <button 
-            onClick={() => handleViewChange(View.INDEX)}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded transition-colors ${
-              currentView === View.INDEX 
-                ? 'bg-[#0066ff] text-white' 
-                : 'hover:bg-[#1a1a1a] text-[#cccccc]'
-            }`}
-          >
-            <BookOpen className="w-5 h-5" />
-            <span className="font-medium">Index Composer</span>
-          </button>
-          <button 
-            onClick={() => handleViewChange(View.REPORT)}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded transition-colors ${
-              currentView === View.REPORT 
-                ? 'bg-[#0066ff] text-white' 
-                : 'hover:bg-[#1a1a1a] text-[#cccccc]'
-            }`}
-          >
-            <FileBarChart className="w-5 h-5" />
-            <span className="font-medium">Final Reports</span>
-          </button>
-        </nav>
+        <AppSidebar
+          currentRoute={currentRoute}
+          onNavigate={handleRouteChange}
+          currentUser={currentUser}
+        />
 
         <div className="p-4 border-t border-[#2a2a2a]">
            <div className="flex items-center gap-3 mb-4">
@@ -385,18 +551,14 @@ const AppContent: React.FC = () => {
                 <Menu className="w-5 h-5 text-[#cccccc]" />
               </button>
             )}
-            <h1 className="text-base sm:text-lg lg:text-xl font-bold text-white truncate">{currentView}</h1>
-            {(currentView === View.DATA || currentView === View.NARRATIVE) && filteredSections.length > 0 && (
-              <select 
-                value={activeSectionId}
-                onChange={(e) => setActiveSectionId(e.target.value)}
-                className="hidden md:block ml-2 lg:ml-4 pl-2 sm:pl-3 pr-6 sm:pr-8 py-1 sm:py-1.5 text-xs sm:text-sm bg-[#1a1a1a] border border-[#2a2a2a] rounded text-white focus:outline-none focus:border-[#00d4ff] transition-colors max-w-xs truncate"
-              >
-                {filteredSections.map(s => (
-                  <option key={s.id} value={s.id} className="bg-[#1a1a1a]">{s.code}: {s.title}</option>
-                ))}
-              </select>
-            )}
+            <div className="flex flex-col min-w-0">
+              <span className="text-[10px] uppercase tracking-wide text-[#6a6a6a] leading-tight">
+                {routePillarLabel(currentRoute)}
+              </span>
+              <span className="text-base sm:text-lg lg:text-xl font-bold text-white truncate">
+                {routePageTitle(currentRoute)}
+              </span>
+            </div>
           </div>
           
           <div className="flex items-center gap-1 sm:gap-2 lg:gap-4 flex-shrink-0">
@@ -410,9 +572,46 @@ const AppContent: React.FC = () => {
           </div>
         </header>
 
+        {isApiConfigured() && sectionsQuery.isError && (
+          <div
+            role="alert"
+            className="flex-shrink-0 px-3 sm:px-4 py-2 bg-amber-950/50 border-b border-amber-600/40 text-sm text-amber-100 flex flex-wrap items-center gap-2"
+            style={{
+              background: 'rgba(69, 26, 3, 0.5)',
+              color: '#fef3c7',
+              borderBottom: '1px solid rgba(217, 119, 6, 0.4)'
+            }}
+          >
+            <span>
+              No se pudo cargar datos desde Supabase. Se muestran datos de demostración.
+            </span>
+            <button
+              type="button"
+              onClick={() => void sectionsQuery.refetch()}
+              className="px-2 py-1 rounded bg-amber-600/30 hover:bg-amber-600/50 text-amber-50 text-xs font-medium border border-amber-500/50"
+              style={{ cursor: 'pointer' }}
+            >
+              Reintentar
+            </button>
+            {import.meta.env.DEV && sectionsQuery.error && (
+              <span className="text-xs opacity-80 font-mono truncate max-w-full">
+                {(sectionsQuery.error as Error).message}
+              </span>
+            )}
+          </div>
+        )}
+
         {/* VIEWPORT */}
         <div className="flex-1 overflow-auto p-3 sm:p-4 lg:p-6 bg-black min-w-0">
            <div className="w-full max-w-full">
+             {/* Breadcrumbs */}
+             {isAuthenticated && (
+               <Breadcrumbs
+                 items={getBreadcrumbItems(currentRoute)}
+                 onNavigate={handleRouteChange}
+               />
+             )}
+             
              {renderContent()}
            </div>
         </div>
@@ -421,17 +620,36 @@ const AppContent: React.FC = () => {
   );
 };
 
-// Main App Component with Providers
-const App: React.FC = () => {
+function DataBootstrap() {
+  const [packEnabled, setPackEnabled] = useState(false);
+  const usersQuery = useRemoteUsersQuery({ enabled: packEnabled });
+  const sectionsQuery = useRemoteSectionsQuery({ enabled: packEnabled });
+  const syncedUsers = isApiConfigured() ? usersQuery.data ?? null : null;
+  const syncedSections = isApiConfigured() ? sectionsQuery.data ?? null : null;
+
   return (
-    <UsersProvider initialUsers={MOCK_USERS}>
-      <SectionsProvider initialSections={MOCK_DATA} initialActiveSectionId={MOCK_DATA[0]?.id}>
-        <AppViewProvider initialView={View.DASHBOARD}>
-          <AppContent />
-        </AppViewProvider>
-      </SectionsProvider>
-    </UsersProvider>
+    <PackEnabledContext.Provider value={setPackEnabled}>
+      <UsersProvider initialUsers={MOCK_USERS} syncedUsers={syncedUsers}>
+        <SectionsProvider
+          initialSections={MOCK_DATA}
+          initialActiveSectionId={MOCK_DATA[0]?.id}
+          syncedSections={syncedSections}
+        >
+          <MaterialityProvider>
+            <AppViewProvider initialRoute={{ type: 'dashboard' }}>
+              <AppContent sectionsQuery={sectionsQuery} />
+            </AppViewProvider>
+          </MaterialityProvider>
+        </SectionsProvider>
+      </UsersProvider>
+    </PackEnabledContext.Provider>
   );
-};
+}
+
+const App: React.FC = () => (
+  <QueryClientProvider client={queryClient}>
+    <DataBootstrap />
+  </QueryClientProvider>
+);
 
 export default App;

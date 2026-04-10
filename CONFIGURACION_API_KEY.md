@@ -4,17 +4,67 @@
 
 ### 1. Obtener una API Key de Google Gemini
 
-1. Ve a una de estas URLs:
-   - **Google AI Studio**: https://aistudio.google.com/app/apikey
-   - **Google MakerSuite**: https://makersuite.google.com/app/apikey
+#### Opción A: Google AI Studio (Recomendado - Más fácil)
 
+1. **Abre tu navegador** y ve a: https://aistudio.google.com/app/apikey
+   - Si el enlace no funciona, busca "Google AI Studio API key" en Google
+
+2. **Inicia sesión** con tu cuenta de Google
+   - Si no tienes cuenta de Google, créala primero en https://accounts.google.com/signup
+
+3. **Acepta los Términos de Servicio** si es la primera vez
+   - Google creará automáticamente un proyecto por defecto
+
+4. **Haz clic en "Create API Key"** o **"Crear clave API"**
+   - El botón puede estar en la parte superior derecha o en el centro de la página
+
+5. **Selecciona un proyecto**:
+   - Si tienes proyectos existentes, selecciona uno
+   - Si no tienes proyectos, haz clic en "Create new project" o "Crear nuevo proyecto"
+   - También puedes usar el proyecto por defecto que Google crea automáticamente
+
+6. **Copia la API key** que aparece en pantalla
+   - Formato: `AIzaSy...` (empieza con "AIzaSy" seguido de letras y números)
+   - **IMPORTANTE**: Copia la clave completa, puede ser bastante larga
+   - Guárdala en un lugar seguro temporalmente
+
+#### Opción B: Google Cloud Console (Alternativa)
+
+Si la Opción A no funciona, intenta esta:
+
+1. Ve a: https://console.cloud.google.com/apis/credentials
 2. Inicia sesión con tu cuenta de Google
+3. Selecciona o crea un proyecto de Google Cloud
+4. Haz clic en "Create Credentials" > "API Key"
+5. Copia la API key generada
 
-3. Haz clic en "Create API Key" o "Crear clave API"
+#### Problemas comunes y soluciones
 
-4. Selecciona un proyecto de Google Cloud o crea uno nuevo
+**Problema: "No puedo acceder a Google AI Studio"**
+- Verifica que estés usando una cuenta de Google válida
+- Intenta en modo incógnito o con otro navegador
+- Asegúrate de tener conexión a internet estable
 
-5. Copia la API key generada (tendrá un formato como: `AIzaSy...`)
+**Problema: "No veo el botón Create API Key"**
+- Asegúrate de estar en la página correcta: https://aistudio.google.com/app/apikey
+- Intenta refrescar la página (F5 o Cmd+R)
+- Verifica que hayas iniciado sesión correctamente
+
+**Problema: "Me pide crear un proyecto pero no sé cómo"**
+- Haz clic en "Create new project" o "Crear nuevo proyecto"
+- Dale un nombre simple como "Mi Proyecto Gemini" o "Test Project"
+- Haz clic en "Create" o "Crear"
+- Espera unos segundos a que se cree el proyecto
+
+**Problema: "La API key no aparece después de crearla"**
+- Revisa si hay un mensaje de confirmación en la página
+- Busca en la lista de "API Keys" en la página
+- Intenta crear otra API key si es necesario
+
+**Problema: "Me pide habilitar facturación"**
+- Para uso básico y pruebas, Google ofrece un tier gratuito
+- Puedes crear la API key sin habilitar facturación inicialmente
+- Si te lo pide, puedes configurar facturación más tarde (hay créditos gratuitos disponibles)
 
 ### 2. Configurar la API Key en el proyecto
 
@@ -68,6 +118,45 @@ Después de configurar la API key, **debes reiniciar el servidor de desarrollo**
 1. Ve a la sección "Narrative Engine" en la aplicación
 2. Intenta generar una narrativa
 3. Si todo está correcto, deberías ver la narrativa generándose sin errores
+
+## Guía Visual Paso a Paso
+
+### Paso 1: Acceder a Google AI Studio
+```
+1. Abre tu navegador (Chrome, Firefox, Safari, etc.)
+2. Ve a: https://aistudio.google.com/app/apikey
+3. Verás una página con el título "Get API key" o "Obtener clave API"
+```
+
+### Paso 2: Iniciar Sesión
+```
+1. Si no estás logueado, haz clic en "Sign in" o "Iniciar sesión"
+2. Ingresa tu email de Google y contraseña
+3. Si no tienes cuenta, créala primero en accounts.google.com
+```
+
+### Paso 3: Crear la API Key
+```
+1. Busca el botón "Create API Key" (puede estar en azul o verde)
+2. Si te pregunta por un proyecto:
+   - Opción 1: Selecciona "Create new project" y dale un nombre
+   - Opción 2: Usa el proyecto por defecto si aparece
+3. Haz clic en "Create API Key in new project" o similar
+```
+
+### Paso 4: Copiar la API Key
+```
+1. Verás un cuadro con tu API key (empieza con "AIzaSy...")
+2. Haz clic en el ícono de copiar o selecciona todo el texto
+3. Pégala en un documento temporal para no perderla
+```
+
+### Paso 5: Configurar en el Proyecto
+```
+1. Abre el archivo .env.local en tu proyecto
+2. Reemplaza TU_API_KEY_AQUI con la clave que copiaste
+3. Guarda el archivo
+```
 
 ## Solución de problemas
 

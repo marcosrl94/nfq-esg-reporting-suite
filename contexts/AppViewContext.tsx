@@ -1,42 +1,47 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
+import type { AppRoute } from './appRoutes';
 
-export enum View {
-  DASHBOARD = 'Dashboard',
-  MATERIALITY = 'Materiality Assessment',
-  DATA = 'Data Ingestion',
-  NARRATIVE = 'Narrative Engine',
-  INDEX = 'Index Composer',
-  REPORT = 'Final Report'
-}
+export type { AppRoute } from './appRoutes';
+export {
+  DEFAULT_DATA_TAB,
+  DEFAULT_REPORTING_TAB,
+  defaultGovernanceTabForRole,
+  routeEquals,
+  routePageTitle,
+  routePillarLabel,
+  dataTabLabel,
+  governanceTabLabel,
+  reportingTabLabel,
+  breadcrumbItemsForRoute,
+} from './appRoutes';
+export type { DataLoadTab, GovernanceTab, ReportingTab, BreadcrumbNavItem } from './appRoutes';
+
+const DEFAULT_ROUTE: AppRoute = { type: 'dashboard' };
 
 interface AppViewContextType {
-  currentView: View;
-  setCurrentView: (view: View) => void;
+  currentRoute: AppRoute;
+  setCurrentRoute: (route: AppRoute) => void;
 }
 
 const AppViewContext = createContext<AppViewContextType | undefined>(undefined);
 
 interface AppViewProviderProps {
   children: ReactNode;
-  initialView?: View;
+  initialRoute?: AppRoute;
 }
 
-export const AppViewProvider: React.FC<AppViewProviderProps> = ({ 
-  children, 
-  initialView = View.DASHBOARD 
+export const AppViewProvider: React.FC<AppViewProviderProps> = ({
+  children,
+  initialRoute = DEFAULT_ROUTE,
 }) => {
-  const [currentView, setCurrentView] = useState<View>(initialView);
+  const [currentRoute, setCurrentRoute] = useState<AppRoute>(initialRoute);
 
   const value: AppViewContextType = {
-    currentView,
-    setCurrentView,
+    currentRoute,
+    setCurrentRoute,
   };
 
-  return (
-    <AppViewContext.Provider value={value}>
-      {children}
-    </AppViewContext.Provider>
-  );
+  return <AppViewContext.Provider value={value}>{children}</AppViewContext.Provider>;
 };
 
 export const useAppView = (): AppViewContextType => {

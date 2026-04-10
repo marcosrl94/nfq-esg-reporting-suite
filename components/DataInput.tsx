@@ -16,9 +16,11 @@ interface DataInputProps {
   currentUser: User;
   users: User[];
   reportingYear: number;
+  /** Si se proporciona, el botón Bulk Import llama a este callback en lugar de abrir el modal interno */
+  onBulkImportClick?: () => void;
 }
 
-const DataInput: React.FC<DataInputProps> = ({ section, onUpdateDatapoint, currentUser, users, reportingYear }) => {
+const DataInput: React.FC<DataInputProps> = ({ section, onUpdateDatapoint, currentUser, users, reportingYear, onBulkImportClick }) => {
   const { isMobile, isTablet } = useMobile();
   const [activeDatapointId, setActiveDatapointId] = useState<string | null>(section.datapoints[0]?.id || null);
   const [newComment, setNewComment] = useState('');
@@ -151,7 +153,7 @@ const DataInput: React.FC<DataInputProps> = ({ section, onUpdateDatapoint, curre
             <p className="text-xs text-[#6a6a6a] mt-1 hidden sm:block">Select a datapoint to edit</p>
           </div>
           <button 
-            onClick={() => setIsBulkImportOpen(true)}
+            onClick={onBulkImportClick || (() => setIsBulkImportOpen(true))}
             className="text-xs text-[#0066ff] font-medium flex items-center gap-1 hover:bg-[#1a1a1a] px-2 py-1 rounded transition-colors whitespace-nowrap"
           >
             <UploadCloud className="w-3 h-3" /> Bulk Import
@@ -296,6 +298,7 @@ const DataInput: React.FC<DataInputProps> = ({ section, onUpdateDatapoint, curre
                                   <div className="w-16 sm:w-20 text-right flex-shrink-0">
                                      {delta !== null && (
                                         <div className={`text-[10px] sm:text-xs font-medium flex items-center justify-end gap-1 ${delta > 0 ? 'text-[#ff4444]' : delta < 0 ? 'text-[#00ff88]' : 'text-[#6a6a6a]'}`}>
+                                           {Math.abs(delta) >= 20 && <AlertCircle className="w-3 h-3 flex-shrink-0" title="Variación significativa - revisar" />}
                                            {delta > 0 ? <TrendingUp className="w-3 h-3"/> : delta < 0 ? <TrendingDown className="w-3 h-3"/> : <Minus className="w-3 h-3"/>}
                                            {Math.abs(delta).toFixed(1)}%
                                         </div>
@@ -544,13 +547,17 @@ const DataInput: React.FC<DataInputProps> = ({ section, onUpdateDatapoint, curre
         )}
       </div>
 
-      {/* Bulk Import Modal */}
-      <BulkImportModal
-        isOpen={isBulkImportOpen}
-        onClose={() => setIsBulkImportOpen(false)}
-        section={section}
-        reportingYear={reportingYear}
-      />
+      {/* Bulk Import Modal (solo cuando no se usa callback externo) */}
+      {!onBulkImportClick && (
+        <BulkImportModal
+          isOpen={isBulkImportOpen}
+          onClose={() => setIsBulkImportOpen(false)}
+          section={section}
+          reportingYear={reportingYear}
+          currentUserId={currentUser.id}
+          currentUserName={currentUser.name}
+        />
+      )}
     </div>
   );
 };

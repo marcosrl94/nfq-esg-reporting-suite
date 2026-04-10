@@ -1,10 +1,18 @@
 import React, { useState } from 'react';
-import { LogIn, ShieldCheck, Mail, Lock, AlertCircle } from 'lucide-react';
-import { User, Role, Department } from '../types';
+import { LogIn, ShieldCheck, Mail, Lock, AlertCircle, LayoutDashboard, Target, Database, FileBarChart } from 'lucide-react';
+import { User } from '../types';
+import { isSupabaseClientAvailable } from '../services/supabaseClient';
+import { signInWithEmailPassword } from '../services/authService';
 
 interface LoginProps {
   users: User[];
   onLogin: (user: User) => void;
+}
+
+/** Demo local: solo desarrollo o si se fuerza explícitamente (nunca en build de producción sin flag). */
+function isDemoLoginAllowed(): boolean {
+  if (import.meta.env.DEV) return true;
+  return import.meta.env.VITE_ALLOW_DEMO_LOGIN === 'true';
 }
 
 const Login: React.FC<LoginProps> = ({ users, onLogin }) => {
@@ -12,21 +20,44 @@ const Login: React.FC<LoginProps> = ({ users, onLogin }) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
-  // Mock authentication - in production, this would call an API
-  const handleLogin = (e: React.FormEvent) => {
+  const supabaseOk = isSupabaseClientAvailable();
+  const demoAllowed = isDemoLoginAllowed();
+  const showDemoUi = demoAllowed && !supabaseOk;
+
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
-    // For demo purposes, allow login with any email if user is selected
     if (selectedUser) {
       onLogin(selectedUser);
       return;
     }
 
-    // Try to find user by email
+    if (supabaseOk) {
+      setSubmitting(true);
+      try {
+        const { user, error: authErr } = await signInWithEmailPassword(email, password);
+        if (user) {
+          onLogin(user);
+          return;
+        }
+        setError(authErr?.message ?? 'No se pudo iniciar sesión.');
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
+    if (!showDemoUi) {
+      setError(
+        'Supabase no está configurado. En producción se requiere VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY.'
+      );
+      return;
+    }
+
     const user = users.find(u => {
-      // Generate email from user name for demo
       const userEmail = `${u.name.toLowerCase().replace(/\s+/g, '.')}@company.com`;
       return userEmail === email.toLowerCase();
     });
@@ -34,7 +65,7 @@ const Login: React.FC<LoginProps> = ({ users, onLogin }) => {
     if (user) {
       onLogin(user);
     } else {
-      setError('Usuario no encontrado. Por favor, selecciona un usuario de la lista.');
+      setError('Usuario no encontrado. Usa acceso rápido (demo) o configura Supabase.');
     }
   };
 
@@ -44,10 +75,51 @@ const Login: React.FC<LoginProps> = ({ users, onLogin }) => {
     onLogin(user);
   };
 
+  const features = [
+    { icon: LayoutDashboard, label: 'Dashboard', desc: 'Overview indicadores reportados y pendientes' },
+    { icon: Target, label: 'Materialidad', desc: 'Evaluación de topics ESRS y profundidad' },
+    { icon: Database, label: 'Data', desc: 'Indicadores, CSV, cuestionarios, conexiones ERP' },
+    { icon: FileBarChart, label: 'Reporting', desc: 'Narrativa, índice e informe final' }
+  ];
+
+  if (import.meta.env.PROD && !supabaseOk) {
+    return (
+      <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center p-6">
+        <div className="max-w-md rounded-lg border border-amber-500/40 bg-amber-950/30 p-6 text-center">
+          <ShieldCheck className="w-10 h-10 text-amber-400 mx-auto mb-3" />
+          <h1 className="text-lg font-semibold text-white mb-2">Configuración requerida</h1>
+          <p className="text-sm text-[#a3a3a3]">
+            El despliegue en producción necesita Supabase (variables{' '}
+            <code className="text-xs bg-black/40 px-1 rounded">VITE_SUPABASE_URL</code> y{' '}
+            <code className="text-xs bg-black/40 px-1 rounded">VITE_SUPABASE_ANON_KEY</code>
+            ). El modo demo solo está pensado para desarrollo local.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        {/* Logo/Header */}
+      <div className="w-full max-w-lg flex flex-col lg:flex-row lg:gap-8 lg:max-w-4xl lg:items-center">
+        <div className="hidden lg:block flex-1 mb-8 lg:mb-0">
+          <h2 className="text-lg font-semibold text-white mb-4">Funcionalidades</h2>
+          <div className="space-y-3">
+            {features.map(({ icon: Icon, label, desc }) => (
+              <div key={label} className="flex items-start gap-3 p-3 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a]">
+                <div className="p-1.5 bg-[#0066ff]/20 rounded">
+                  <Icon className="w-4 h-4 text-[#0066ff]" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-white">{label}</p>
+                  <p className="text-xs text-[#6a6a6a]">{desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="w-full max-w-md lg:flex-shrink-0">
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 bg-[#0066ff]/20 rounded-2xl mb-4">
             <ShieldCheck className="w-8 h-8 text-[#0066ff]" />
@@ -58,12 +130,17 @@ const Login: React.FC<LoginProps> = ({ users, onLogin }) => {
           <p className="text-sm text-[#6a6a6a]">
             Inicia sesión para acceder a tu panel
           </p>
+          <div className="mt-4 lg:hidden flex flex-wrap justify-center gap-2">
+            {features.map(({ label }) => (
+              <span key={label} className="px-2 py-0.5 rounded bg-[#1a1a1a] text-xs text-[#6a6a6a] border border-[#2a2a2a]">
+                {label}
+              </span>
+            ))}
+          </div>
         </div>
 
-        {/* Login Form */}
         <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-6 sm:p-8 shadow-xl">
           <form onSubmit={handleLogin} className="space-y-4">
-            {/* Email Input */}
             <div>
               <label className="block text-xs sm:text-sm font-medium text-[#aaaaaa] mb-2">
                 Email
@@ -85,7 +162,6 @@ const Login: React.FC<LoginProps> = ({ users, onLogin }) => {
               </div>
             </div>
 
-            {/* Password Input */}
             <div>
               <label className="block text-xs sm:text-sm font-medium text-[#aaaaaa] mb-2">
                 Contraseña
@@ -101,12 +177,12 @@ const Login: React.FC<LoginProps> = ({ users, onLogin }) => {
                   }}
                   className="w-full pl-10 pr-4 py-2.5 bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg text-white text-sm focus:border-[#0066ff] focus:outline-none transition-colors"
                   placeholder="••••••••"
-                  required
+                  required={supabaseOk}
+                  disabled={!supabaseOk && showDemoUi}
                 />
               </div>
             </div>
 
-            {/* Error Message */}
             {error && (
               <div className="flex items-start gap-2 p-3 bg-red-900/20 border border-red-500/50 rounded-lg">
                 <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
@@ -114,25 +190,26 @@ const Login: React.FC<LoginProps> = ({ users, onLogin }) => {
               </div>
             )}
 
-            {/* Login Button */}
             <button
               type="submit"
-              className="w-full py-2.5 bg-[#0066ff] hover:bg-[#0052cc] text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
+              disabled={submitting}
+              className="w-full py-2.5 bg-[#0066ff] hover:bg-[#0052cc] disabled:opacity-50 text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
             >
               <LogIn className="w-4 h-4" />
-              Iniciar Sesión
+              {submitting ? 'Entrando…' : 'Iniciar Sesión'}
             </button>
           </form>
 
-          {/* Quick Login Section */}
+          {showDemoUi && (
           <div className="mt-6 pt-6 border-t border-[#2a2a2a]">
             <p className="text-xs text-[#6a6a6a] mb-3 text-center">
-              Acceso rápido (Demo)
+              Acceso rápido (solo entorno local / demo)
             </p>
             <div className="space-y-2">
               {users.map((user) => (
                 <button
                   key={user.id}
+                  type="button"
                   onClick={() => handleQuickLogin(user)}
                   className={`w-full p-3 rounded-lg border transition-colors text-left ${
                     selectedUser?.id === user.id
@@ -157,12 +234,13 @@ const Login: React.FC<LoginProps> = ({ users, onLogin }) => {
               ))}
             </div>
           </div>
+          )}
         </div>
 
-        {/* Footer */}
         <p className="text-center text-xs text-[#6a6a6a] mt-6">
           © 2024 NFQ ESG Reporting Suite. Todos los derechos reservados.
         </p>
+        </div>
       </div>
     </div>
   );

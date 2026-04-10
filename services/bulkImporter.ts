@@ -1,6 +1,11 @@
-import { GoogleGenAI } from "@google/genai";
-import { StandardSection } from '../types';
-import { retryWithBackoff, handleApiError, GeminiServiceError } from './geminiService';
+import { StandardSection, ConsolidatedDatapoint, ConsolidationSource } from '../types';
+import {
+  retryWithBackoff,
+  handleApiError,
+  GeminiServiceError,
+  generateContentUnified,
+} from './geminiService';
+import { createSourceFromImport } from './hierarchyService';
 
 // ============================================
 // TYPE DEFINITIONS
@@ -33,7 +38,9 @@ export interface BulkImportResult {
   failedRows: number;
   mappings: ColumnMapping[];
   errors: BulkImportError[];
-  datapointsUpdated: string[]; // IDs of datapoints that were updated
+  datapointsUpdated: string[];
+  /** Avisos (ej. filas omitidas en modo consolidación por falta de fuente) */
+  warnings?: Array<{ rowIndex: number; message: string }>;
 }
 
 /**
@@ -55,19 +62,23 @@ export interface BulkImportConfig {
   overwriteExisting?: boolean; // Whether to overwrite existing values
   validateBeforeImport?: boolean; // Whether to validate data before importing
   dryRun?: boolean; // If true, don't actually update datapoints
+  /** Modo consolidación bottom-up: columna que identifica la fuente (ej: "Fuente", "Instalación", "Source") */
+  consolidationMode?: boolean;
+  /** Nombre de la columna de fuente cuando consolidationMode=true */
+  sourceColumn?: string;
+  /** IDs de datapoints que deben habilitar consolidación tras importar */
+  enableConsolidationForDatapoints?: string[];
+  /** Usuario por defecto para nuevas fuentes */
+  defaultUserId?: string;
+  /** Nombre del usuario por defecto */
+  defaultUserName?: string;
+  /** Departamento/función responsable (para ConsolidationSource.responsibleDepartment) */
+  responsibleDepartment?: string;
 }
 
 // ============================================
 // UTILITY FUNCTIONS
 // ============================================
-
-const getClient = (): GoogleGenAI => {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) {
-    throw new GeminiServiceError("API Key is missing", 'AUTH_ERROR', false);
-  }
-  return new GoogleGenAI({ apiKey });
-};
 
 /**
  * Extracts column names from bulk data
@@ -121,7 +132,6 @@ export const mapColumnsToDatapoints = async (
   }
 
   return await retryWithBackoff(async () => {
-    const ai = getClient();
     const modelId = 'gemini-3-flash-preview';
 
     // Prepare sample data context if available
@@ -168,7 +178,7 @@ export const mapColumnsToDatapoints = async (
     `;
 
     try {
-      const response = await ai.models.generateContent({
+      const jsonStr = await generateContentUnified({
         model: modelId,
         contents: prompt,
         config: {
@@ -176,8 +186,8 @@ export const mapColumnsToDatapoints = async (
         }
       });
 
-      const jsonStr = response.text || "[]";
-      const mappings: ColumnMapping[] = JSON.parse(jsonStr);
+      const jsonSafe = jsonStr || "[]";
+      const mappings: ColumnMapping[] = JSON.parse(jsonSafe);
       
       // Validate mappings
       return mappings.map(mapping => ({
@@ -192,6 +202,7 @@ export const mapColumnsToDatapoints = async (
 
 /**
  * Processes bulk import data and updates datapoints
+ * Supports consolidation mode (bottom-up): each row = one source, columns = metrics
  */
 export const importBulkData = async (
   data: BulkImportRow[],
@@ -213,82 +224,109 @@ export const importBulkData = async (
 
   const targetYear = config.year || new Date().getFullYear();
   const yearKey = targetYear.toString();
+  const defaultUserId = config.defaultUserId || 'user-1';
+  const defaultUserName = config.defaultUserName || 'Usuario';
+  const responsibleDepartment = config.responsibleDepartment;
 
-  // Create a lookup map: datapointCode -> sourceColumn
   const codeToColumnMap = new Map<string, string>();
+  const excludeColumns = new Set(
+    consolidationMode && config.sourceColumn ? [config.sourceColumn, 'Fuente', 'Source', 'Instalación'] : []
+  );
   mappings.forEach(mapping => {
-    if (mapping.confidence >= 50) { // Only use high-confidence mappings
+    if (mapping.confidence >= 50 && !excludeColumns.has(mapping.sourceColumn)) {
       codeToColumnMap.set(mapping.datapointCode, mapping.sourceColumn);
     }
   });
 
-  // Process each row
+  const consolidationMode = config.consolidationMode && config.sourceColumn;
+  const sourceColumnName = config.sourceColumn || 'Fuente';
+
+  // Consolidation mode: accumulate sources per datapoint (Map<datapointId, Map<sourceName, ConsolidationSource>>)
+  const sourcesByDatapoint = new Map<string, Map<string, ConsolidationSource>>();
+
   for (let rowIndex = 0; rowIndex < data.length; rowIndex++) {
     const row = data[rowIndex];
-    
+
     try {
-      // Find and update matching datapoints
-      // Use for...of loops instead of forEach to support await
+      const sourceName = consolidationMode
+        ? (row[sourceColumnName] ?? row['Source'] ?? row['Instalación'] ?? row['Fuente'] ?? '')
+        : null;
+
+      if (consolidationMode && (!sourceName || String(sourceName).trim() === '')) {
+        (result.warnings ||= []).push({
+          rowIndex,
+          message: `Fila ${rowIndex + 1}: falta valor en columna "${sourceColumnName}". Se omite.`
+        });
+        result.processedRows++;
+        if (onProgress) onProgress({ processed: rowIndex + 1, total: data.length });
+        continue;
+      }
+
       for (const section of sections) {
         for (const datapoint of section.datapoints) {
-          const sourceColumn = codeToColumnMap.get(datapoint.code);
-          
-          if (sourceColumn && row[sourceColumn] !== undefined && row[sourceColumn] !== null) {
-            const value = row[sourceColumn];
-            
-            // Validate value type matches datapoint type
-            if (datapoint.type === 'quantitative') {
-              const numValue = typeof value === 'number' ? value : parseFloat(String(value));
-              if (isNaN(numValue)) {
-                result.errors.push({
-                  rowIndex,
-                  column: sourceColumn,
-                  message: `Invalid numeric value: ${value}`,
-                  datapointCode: datapoint.code
-                });
-                result.failedRows++;
-                continue; // Skip this datapoint
-              }
+          const dataColumn = codeToColumnMap.get(datapoint.code);
+          const value = dataColumn != null ? row[dataColumn] : undefined;
+
+          if (value === undefined || value === null || value === '') continue;
+
+          if (datapoint.type === 'quantitative') {
+            const numValue = typeof value === 'number' ? value : parseFloat(String(value));
+            if (isNaN(numValue)) {
+              result.errors.push({
+                rowIndex,
+                column: dataColumn,
+                message: `Valor no numérico: ${value}`,
+                datapointCode: datapoint.code
+              });
+              result.failedRows++;
+              continue;
             }
-            
-            // Update datapoint (if not dry run)
-            if (!config.dryRun) {
-              const updatedValues = {
-                ...datapoint.values,
-                [yearKey]: value
-              };
-              
-              // Update datapoint using provided function or track for later
+          }
+
+          if (!config.dryRun) {
+            if (consolidationMode && sourceName) {
+              let dpSources = sourcesByDatapoint.get(datapoint.id);
+              if (!dpSources) {
+                dpSources = new Map();
+                sourcesByDatapoint.set(datapoint.id, dpSources);
+              }
+              const existing = Array.from(dpSources.values());
+              const source = createSourceFromImport(
+                String(sourceName).trim(),
+                value,
+                targetYear,
+                defaultUserId,
+                defaultUserName,
+                existing,
+                responsibleDepartment
+              );
+              dpSources.set(source.name, source);
+            } else {
+              const updatedValues = { ...datapoint.values, [yearKey]: value };
               if (updateDatapointFn) {
                 try {
-                  // Handle both sync and async functions
                   const updateResult = updateDatapointFn(datapoint.id, { values: updatedValues });
-                  if (updateResult instanceof Promise) {
-                    await updateResult;
-                  }
+                  if (updateResult instanceof Promise) await updateResult;
                   if (!result.datapointsUpdated.includes(datapoint.id)) {
                     result.datapointsUpdated.push(datapoint.id);
                   }
                 } catch (error) {
                   result.errors.push({
                     rowIndex,
-                    column: sourceColumn,
-                    message: `Failed to update datapoint ${datapoint.code}: ${error instanceof Error ? error.message : String(error)}`,
+                    column: dataColumn,
+                    message: `Error actualizando ${datapoint.code}: ${error instanceof Error ? error.message : String(error)}`,
                     datapointCode: datapoint.code
                   });
                   result.failedRows++;
                 }
-              } else {
-                // Fallback: just track which datapoints would be updated
-                if (!result.datapointsUpdated.includes(datapoint.id)) {
-                  result.datapointsUpdated.push(datapoint.id);
-                }
+              } else if (!result.datapointsUpdated.includes(datapoint.id)) {
+                result.datapointsUpdated.push(datapoint.id);
               }
             }
           }
         }
       }
-      
+
       result.processedRows++;
     } catch (error) {
       result.success = false;
@@ -298,13 +336,45 @@ export const importBulkData = async (
         message: error instanceof Error ? error.message : String(error)
       });
     }
-    
-    // Report progress
+
     if (onProgress) {
-      onProgress({
-        processed: rowIndex + 1,
-        total: data.length
-      });
+      onProgress({ processed: rowIndex + 1, total: data.length });
+    }
+  }
+
+  // Consolidation mode: apply accumulated sources to datapoints
+  if (consolidationMode && !config.dryRun && updateDatapointFn && sourcesByDatapoint.size > 0) {
+    for (const [datapointId, sourceMap] of sourcesByDatapoint) {
+      const datapoint = sections.flatMap(s => s.datapoints).find(d => d.id === datapointId);
+      if (!datapoint) continue;
+
+      const sources = Array.from(sourceMap.values());
+      const consolidatedValue = sources.reduce((sum, s) => {
+        const v = s.values[yearKey];
+        const num = typeof v === 'number' ? v : parseFloat(String(v ?? ''));
+        return sum + (isNaN(num) ? 0 : num);
+      }, 0);
+
+      try {
+        const updates: Partial<ConsolidatedDatapoint> = {
+          consolidationEnabled: true,
+          consolidationMethod: 'sum',
+          sources,
+          values: { ...datapoint.values, [yearKey]: consolidatedValue },
+          lastConsolidated: new Date().toISOString()
+        };
+        const updateResult = updateDatapointFn(datapointId, updates);
+        if (updateResult instanceof Promise) await updateResult;
+        if (!result.datapointsUpdated.includes(datapointId)) {
+          result.datapointsUpdated.push(datapointId);
+        }
+      } catch (error) {
+        result.errors.push({
+          rowIndex: -1,
+          message: `Error aplicando consolidación a ${datapoint.code}: ${error instanceof Error ? error.message : String(error)}`,
+          datapointCode: datapoint.code
+        });
+      }
     }
   }
 

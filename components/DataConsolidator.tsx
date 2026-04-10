@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   Users, Plus, Trash2, Edit2, Save, X, TrendingUp, PieChart as PieChartIcon,
-  BarChart3, MapPin, Building2, Factory, CheckCircle, AlertCircle, FileCheck
+  BarChart3, MapPin, Building2, Factory, CheckCircle, AlertCircle, FileCheck, GitBranch, ChevronDown, ChevronUp
 } from 'lucide-react';
 import { ConsolidatedDatapoint, ConsolidationSource, ConsolidationConfig, User } from '../types';
 import {
@@ -47,13 +47,7 @@ const DataConsolidator: React.FC<DataConsolidatorProps> = ({
   const [activeTab, setActiveTab] = useState<'sources' | 'evidence'>('sources');
   const [editingSource, setEditingSource] = useState<string | null>(null);
   const [newSource, setNewSource] = useState<Partial<ConsolidationSource> | null>(null);
-  
-  // Debug: Log datapoint consolidation status
-  useEffect(() => {
-    console.log('DataConsolidator - datapoint.consolidationEnabled:', datapoint.consolidationEnabled);
-    console.log('DataConsolidator - datapoint.sources:', datapoint.sources);
-    console.log('DataConsolidator - Full datapoint:', datapoint);
-  }, [datapoint.consolidationEnabled, datapoint.sources, datapoint]);
+  const [showTraceability, setShowTraceability] = useState(false);
   
   const [config, setConfig] = useState<ConsolidationConfig>({
     datapointId: datapoint.id,
@@ -106,13 +100,11 @@ const DataConsolidator: React.FC<DataConsolidatorProps> = ({
       alert('Error: Datapoint inválido');
       return;
     }
-    console.log('Enabling consolidation for datapoint:', datapoint.id);
     onUpdateDatapoint(datapoint.id, {
       consolidationEnabled: true,
       consolidationMethod: config.method,
       sources: datapoint.sources || []
     });
-    console.log('Consolidation enabled, waiting for update...');
   };
 
   const handleAddSource = () => {
@@ -346,6 +338,35 @@ const DataConsolidator: React.FC<DataConsolidatorProps> = ({
               <span className="text-xs sm:text-sm text-green-500 font-medium">Consolidado</span>
             </div>
           </div>
+          {/* Trazabilidad (estilo Sygris/Enablon: audit trail) */}
+          {consolidationResult.metadata && (
+            <div className="mt-4 pt-4 border-t border-[#2a2a2a]">
+              <button
+                onClick={() => setShowTraceability(!showTraceability)}
+                className="flex items-center gap-2 text-xs sm:text-sm text-[#6a6a6a] hover:text-white transition-colors"
+              >
+                <GitBranch className="w-4 h-4 text-[#0066ff]" />
+                Trazabilidad del cálculo
+                {showTraceability ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </button>
+              {showTraceability && (
+                <div className="mt-3 space-y-2 text-xs text-[#6a6a6a]">
+                  <p><span className="text-white">Fuentes incluidas:</span> {consolidationResult.metadata.includedSourceIds?.length || 0}</p>
+                  {consolidationResult.metadata.excludedSourceIds?.length > 0 && (
+                    <p><span className="text-yellow-500">Fuentes excluidas:</span> {consolidationResult.metadata.excludedSourceIds.length}
+                      {Object.keys(consolidationResult.metadata.exclusionReasons || {}).length > 0 && (
+                        <span className="block mt-1 text-[#555]">
+                          {Object.entries(consolidationResult.metadata.exclusionReasons || {}).map(([id, reason]) => (
+                            <span key={id} className="block">• {reason}</span>
+                          ))}
+                        </span>
+                      )}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 

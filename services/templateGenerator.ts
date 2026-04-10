@@ -1,32 +1,59 @@
-import { StandardSection, Datapoint } from '../types';
+import { StandardSection, Datapoint, Department } from '../types';
+
+/**
+ * Filtra datapoints por departamento/función
+ */
+export const getDatapointsByDepartment = (
+  sections: StandardSection[],
+  department?: Department
+): Datapoint[] => {
+  const all = sections.flatMap(s => s.datapoints);
+  if (!department) return all;
+  return all.filter(dp => dp.department === department);
+};
 
 /**
  * Generates a CSV template for bulk import
  */
 export const generateCSVTemplate = (sections: StandardSection[], reportingYear: number): string => {
-  // Collect all datapoints
   const datapoints: Datapoint[] = [];
   sections.forEach(section => {
-    section.datapoints.forEach(dp => {
-      datapoints.push(dp);
-    });
+    section.datapoints.forEach(dp => datapoints.push(dp));
   });
-
-  // Create headers
   const headers = ['Datapoint Code', 'Datapoint Name', `Value ${reportingYear}`, 'Unit', 'Notes'];
-  
-  // Create rows
   const rows = datapoints.map(dp => {
     const code = dp.code;
-    const name = dp.name.replace(/"/g, '""'); // Escape quotes
+    const name = dp.name.replace(/"/g, '""');
     const value = dp.values[reportingYear.toString()] || '';
     const unit = dp.unit || '';
     const notes = '';
-    
     return [code, name, value, unit, notes].map(field => `"${field}"`).join(',');
   });
-
   return [headers.map(h => `"${h}"`).join(','), ...rows].join('\n');
+};
+
+/**
+ * Generates a CSV template for BOTTOM-UP consolidation import (Workiva/Enablon style)
+ * One row per source (instalación, subsidiaria, etc.), columns = metrics
+ */
+export const generateConsolidationCSVTemplate = (
+  sections: StandardSection[],
+  reportingYear: number
+): string => {
+  const datapoints = sections.flatMap(s => s.datapoints.filter(dp => dp.type === 'quantitative'));
+  const metricHeaders = datapoints.slice(0, 8).map(dp => dp.code); // Limit for readability
+  const headers = ['Fuente', 'Tipo', ...metricHeaders];
+  const emptyCols = metricHeaders.map(() => '');
+  const exampleRows = [
+    ['Planta Madrid', 'facility', ...emptyCols],
+    ['Planta Barcelona', 'facility', ...emptyCols],
+    ['España (ejemplo)', 'geography', ...emptyCols]
+  ];
+  const allRows = [headers.map(h => `"${h}"`).join(',')];
+  exampleRows.forEach(row => {
+    allRows.push(row.map(field => `"${field}"`).join(','));
+  });
+  return allRows.join('\n');
 };
 
 /**
@@ -106,4 +133,84 @@ export const downloadJSONTemplate = (sections: StandardSection[], reportingYear:
 export const downloadExcelTemplate = (sections: StandardSection[], reportingYear: number): void => {
   const content = generateExcelTemplate(sections, reportingYear);
   downloadTemplate(content, `esg-bulk-import-template-${reportingYear}.csv`, 'text/csv;charset=utf-8;');
+};
+
+/**
+ * Downloads a template for BOTTOM-UP consolidation (una fila por fuente)
+ */
+export const downloadConsolidationTemplate = (
+  sections: StandardSection[],
+  reportingYear: number
+): void => {
+  const content = '\uFEFF' + generateConsolidationCSVTemplate(sections, reportingYear);
+  downloadTemplate(
+    content,
+    `esg-consolidacion-bottom-up-${reportingYear}.csv`,
+    'text/csv;charset=utf-8;'
+  );
+};
+
+/**
+ * Genera template CSV filtrado por función/departamento (para carga por función)
+ */
+export const generateCSVTemplateByFunction = (
+  sections: StandardSection[],
+  reportingYear: number,
+  department: Department
+): string => {
+  const datapoints = getDatapointsByDepartment(sections, department);
+  if (datapoints.length === 0) return '';
+  const headers = ['Datapoint Code', 'Datapoint Name', `Value ${reportingYear}`, 'Unit', 'Notes'];
+  const rows = datapoints.map(dp => {
+    const code = dp.code;
+    const name = dp.name.replace(/"/g, '""');
+    const value = dp.values[reportingYear.toString()] || '';
+    const unit = dp.unit || '';
+    const notes = '';
+    return [code, name, value, unit, notes].map(field => `"${field}"`).join(',');
+  });
+  return [headers.map(h => `"${h}"`).join(','), ...rows].join('\n');
+};
+
+/**
+ * Genera template de consolidación por función (una fila por fuente)
+ */
+export const generateConsolidationCSVTemplateByFunction = (
+  sections: StandardSection[],
+  reportingYear: number,
+  department: Department
+): string => {
+  const datapoints = getDatapointsByDepartment(sections, department)
+    .filter(dp => dp.type === 'quantitative');
+  if (datapoints.length === 0) return '';
+  const metricHeaders = datapoints.slice(0, 12).map(dp => dp.code);
+  const headers = ['Fuente', 'Tipo', 'Responsable', ...metricHeaders];
+  const emptyCols = metricHeaders.map(() => '');
+  const exampleRows = [
+    ['Planta Madrid', 'facility', '', ...emptyCols],
+    ['Planta Barcelona', 'facility', '', ...emptyCols],
+    ['España (ejemplo)', 'geography', '', ...emptyCols]
+  ];
+  const allRows = [headers.map(h => `"${h}"`).join(',')];
+  exampleRows.forEach(row => allRows.push(row.map(field => `"${field}"`).join(',')));
+  return allRows.join('\n');
+};
+
+/**
+ * Descarga template por función (estándar o consolidación)
+ */
+export const downloadTemplateByFunction = (
+  sections: StandardSection[],
+  reportingYear: number,
+  department: Department,
+  mode: 'standard' | 'consolidation' = 'standard'
+): void => {
+  const deptSlug = department.replace(/[^a-zA-Z0-9]/g, '-').replace(/-+/g, '-').toLowerCase();
+  if (mode === 'consolidation') {
+    const content = '\uFEFF' + generateConsolidationCSVTemplateByFunction(sections, reportingYear, department);
+    downloadTemplate(content, `esg-${deptSlug}-consolidacion-${reportingYear}.csv`, 'text/csv;charset=utf-8;');
+  } else {
+    const content = '\uFEFF' + generateCSVTemplateByFunction(sections, reportingYear, department);
+    downloadTemplate(content, `esg-${deptSlug}-carga-${reportingYear}.csv`, 'text/csv;charset=utf-8;');
+  }
 };

@@ -6,7 +6,7 @@
     <title>NFQ ESG Reporting Suite</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/styles/palantir-theme.css">
+    <link rel="stylesheet" href="/index.css">
     <style>
       body { 
         font-family: 'Inter', sans-serif;
@@ -26,10 +26,112 @@
   }
 }
 </script>
-<link rel="stylesheet" href="/index.css">
 </head>
   <body class="bg-black text-white antialiased">
     <div id="root"></div>
   <script type="module" src="/index.tsx"></script>
+  <script>
+    // Ajustar el orden del DOM del vite-error-overlay cuando aparezca
+    // Mover el elemento de la posición index 2 a la posición index 3
+    (function() {
+      let isAdjusting = false;
+      
+      const adjustViteErrorOverlayOrder = () => {
+        if (isAdjusting) return;
+        
+        const overlay = document.querySelector('vite-error-overlay');
+        if (!overlay || !overlay.parentElement) return;
+        
+        const parent = overlay.parentElement;
+        const children = Array.from(parent.children);
+        const currentIndex = children.indexOf(overlay);
+        
+        // Si el overlay está en la posición 2 (index 2), moverlo a la posición 3 (index 3)
+        if (currentIndex === 2) {
+          isAdjusting = true;
+          
+          // Para mover de posición 2 a posición 3, necesitamos insertar el overlay
+          // después del elemento que está en la posición 2 (antes del overlay)
+          // Pero como el overlay está en la posición 2, necesitamos el elemento anterior
+          // que sería children[1] (posición 1), e insertar después de él
+          // Sin embargo, esto lo colocaría en la posición 2 otra vez...
+          
+          // La interpretación correcta: queremos que el overlay esté en la posición 3,
+          // lo que significa insertarlo después del elemento que está en la posición 2
+          // (que es el overlay mismo antes de moverse). 
+          // Necesitamos insertar después del elemento en children[2] (que es el overlay),
+          // pero eso no tiene sentido.
+          
+          // Reinterpretando: si el overlay está en index 2 y queremos moverlo a index 3,
+          // debemos insertarlo después del elemento que está en index 2 ANTES de que el overlay
+          // se mueva. Pero el overlay ya está ahí...
+          
+          // Para mover de posición 2 a posición 3:
+          // Si hay un elemento en children[3], insertar el overlay después de él
+          // Esto colocará el overlay en la posición 4 después de la inserción
+          // Pero el cambio solicita posición 3, así que la interpretación es:
+          // insertar después del elemento que está en la posición 3 (children[3])
+          if (children.length > 3) {
+            const elementAtPosition3 = children[3];
+            if (elementAtPosition3 && elementAtPosition3 !== overlay) {
+              // Insertar después del elemento en posición 3
+              if (elementAtPosition3.nextSibling) {
+                parent.insertBefore(overlay, elementAtPosition3.nextSibling);
+              } else {
+                parent.appendChild(overlay);
+              }
+            } else {
+              parent.appendChild(overlay);
+            }
+          } else {
+            // Si no hay elemento en posición 3, mover al final
+            parent.appendChild(overlay);
+          }
+          
+          isAdjusting = false;
+        }
+      };
+
+      // Observar cuando se agrega el overlay al DOM
+      const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+          mutation.addedNodes.forEach((node) => {
+            if (node.nodeName === 'VITE-ERROR-OVERLAY' || 
+                (node.nodeType === 1 && node.tagName && node.tagName.toLowerCase() === 'vite-error-overlay')) {
+              // Usar requestAnimationFrame para asegurar que el DOM esté completamente actualizado
+              requestAnimationFrame(() => {
+                setTimeout(adjustViteErrorOverlayOrder, 10);
+              });
+            }
+          });
+        });
+      });
+
+      // Función para iniciar la observación
+      const startObservation = () => {
+        if (document.body) {
+          observer.observe(document.body, { childList: true, subtree: false });
+          // Verificar si el overlay ya existe
+          requestAnimationFrame(() => {
+            setTimeout(adjustViteErrorOverlayOrder, 100);
+          });
+        }
+      };
+
+      // Iniciar observación cuando el DOM esté listo
+      if (document.body) {
+        startObservation();
+      } else {
+        document.addEventListener('DOMContentLoaded', startObservation);
+      }
+      
+      // También verificar periódicamente por si el overlay se agrega después
+      setInterval(() => {
+        if (!isAdjusting) {
+          adjustViteErrorOverlayOrder();
+        }
+      }, 500);
+    })();
+  </script>
 </body>
 </html>

@@ -1,4 +1,17 @@
-import { User, StandardSection, Datapoint, Comment, EvidenceFile, ConsolidatedDatapoint } from '../types';
+import {
+  User,
+  StandardSection,
+  Datapoint,
+  Comment,
+  EvidenceFile,
+  AuditLogEntry,
+  ReportingFrequency
+} from '../types';
+import {
+  getActiveOrganizationId,
+  resolveOrganizationIdForApi,
+  resolveReportingCycleIdForApi
+} from './dataPlane';
 
 // ============================================
 // CONFIGURATION
@@ -7,9 +20,9 @@ import { User, StandardSection, Datapoint, Comment, EvidenceFile, ConsolidatedDa
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
-// Check if Supabase is configured
-const isSupabaseConfigured = () => {
-  return SUPABASE_URL && SUPABASE_ANON_KEY;
+// Check if Supabase is configured (must be a real boolean — React Query `enabled` rejects truthy strings)
+const isSupabaseConfigured = (): boolean => {
+  return Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 };
 
 // ============================================
@@ -43,11 +56,64 @@ const handleResponse = async (response: Response): Promise<any> => {
   return response.json();
 };
 
-const getHeaders = () => ({
-  'Content-Type': 'application/json',
-  'apikey': SUPABASE_ANON_KEY,
-  'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
-});
+let accessTokenOverride: string | null = null;
+
+/** Usar sesión Supabase (JWT usuario) para RLS; si no, anon key. */
+export function setApiAccessToken(token: string | null): void {
+  accessTokenOverride = token;
+}
+
+const getHeaders = () => {
+  const bearer = accessTokenOverride || SUPABASE_ANON_KEY;
+  const h: Record<string, string> = {
+    'Content-Type': 'application/json',
+    apikey: SUPABASE_ANON_KEY,
+    Authorization: `Bearer ${bearer}`
+  };
+  const org = getActiveOrganizationId();
+  if (org && org !== 'default-org') {
+    h['x-organization-id'] = org;
+  }
+  return h;
+};
+
+function mapRowToDatapoint(dp: any, comments: any[]): Datapoint {
+  return {
+    id: dp.id,
+    code: dp.code,
+    name: dp.name,
+    description: dp.description,
+    values: dp.values || {},
+    unit: dp.unit,
+    type: dp.type,
+    status: dp.status,
+    ownerId: dp.owner_id,
+    department: dp.department,
+    lastModified: dp.updated_at,
+    evidence: dp.evidence || [],
+    comments: comments.map((c: any) => ({
+      id: c.id,
+      userId: c.user_id,
+      userName: c.user_name || 'Unknown',
+      text: c.text,
+      timestamp: c.created_at
+    })),
+    mappings: dp.mappings || {},
+    aiVerification: dp.ai_verification || undefined,
+    ...(dp.consolidation_enabled !== undefined
+      ? {
+          consolidationEnabled: dp.consolidation_enabled,
+          consolidationMethod: dp.consolidation_method,
+          sources: dp.consolidation_sources || [],
+          consolidatedValue: dp.consolidated_value || {},
+          breakdowns: dp.breakdowns || [],
+          lastConsolidated: dp.last_consolidated
+        }
+      : {}),
+    reportingFrequency: (dp.reporting_frequency as ReportingFrequency) || 'annual',
+    assignedToUserId: dp.assigned_to_user_id || undefined
+  } as Datapoint;
+}
 
 // ============================================
 // USERS API
@@ -68,7 +134,9 @@ export const fetchUsers = async (): Promise<User[]> => {
     name: u.name,
     role: u.role,
     department: u.department,
-    avatar: u.avatar || u.name.substring(0, 2).toUpperCase()
+    avatar: u.avatar || u.name.substring(0, 2).toUpperCase(),
+    organizationId: u.organization_id ? String(u.organization_id) : undefined,
+    email: u.email ? String(u.email) : undefined
   }));
 };
 
@@ -112,18 +180,40 @@ export const updateUser = async (userId: string, updates: Partial<User>): Promis
 // SECTIONS & DATAPOINTS API
 // ============================================
 
-export const fetchSections = async (): Promise<StandardSection[]> => {
-  if (!isSupabaseConfigured()) {
-    throw new ApiServiceError('Supabase not configured', 'CONFIG_ERROR');
-  }
+const DEFAULT_FETCH_TIMEOUT_MS = 20_000;
 
-  // Fetch sections
-  const sectionsResponse = await fetch(`${SUPABASE_URL}/rest/v1/standards?select=*`, {
-    headers: getHeaders()
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const id = setTimeout(() => {
+      reject(new ApiServiceError(`${label}: tiempo de espera (${ms}ms)`, 'TIMEOUT'));
+    }, ms);
+    promise.then(
+      v => {
+        clearTimeout(id);
+        resolve(v);
+      },
+      e => {
+        clearTimeout(id);
+        reject(e);
+      }
+    );
   });
+}
+
+async function fetchSectionsImpl(): Promise<StandardSection[]> {
+  const orgScoped =
+    import.meta.env.VITE_ENABLE_ORG_FILTER === 'true'
+      ? `&organization_id=eq.${encodeURIComponent(getActiveOrganizationId())}`
+      : '';
+
+  const sectionsResponse = await fetch(
+    `${SUPABASE_URL}/rest/v1/standards?select=*${orgScoped}`,
+    {
+      headers: getHeaders()
+    }
+  );
   const sections = await handleResponse(sectionsResponse);
 
-  // Fetch datapoints for each section
   const sectionsWithDatapoints = await Promise.all(
     sections.map(async (section: any) => {
       const datapointsResponse = await fetch(
@@ -132,7 +222,6 @@ export const fetchSections = async (): Promise<StandardSection[]> => {
       );
       const datapoints = await handleResponse(datapointsResponse);
 
-      // Fetch comments for each datapoint
       const datapointsWithComments = await Promise.all(
         datapoints.map(async (dp: any) => {
           const commentsResponse = await fetch(
@@ -141,35 +230,7 @@ export const fetchSections = async (): Promise<StandardSection[]> => {
           );
           const comments = await handleResponse(commentsResponse);
 
-          return {
-            id: dp.id,
-            code: dp.code,
-            name: dp.name,
-            description: dp.description,
-            values: dp.values || {},
-            unit: dp.unit,
-            type: dp.type,
-            status: dp.status,
-            ownerId: dp.owner_id,
-            department: dp.department,
-            lastModified: dp.updated_at,
-            evidence: dp.evidence || [],
-            comments: comments.map((c: any) => ({
-              id: c.id,
-              userId: c.user_id,
-              userName: c.user_name || 'Unknown',
-              text: c.text,
-              timestamp: c.created_at
-            })),
-            mappings: dp.mappings || {},
-            aiVerification: dp.ai_verification || undefined,
-            consolidationEnabled: dp.consolidation_enabled || false,
-            consolidationMethod: dp.consolidation_method,
-            sources: dp.consolidation_sources || [],
-            consolidatedValue: dp.consolidated_value || {},
-            breakdowns: dp.breakdowns || [],
-            lastConsolidated: dp.last_consolidated
-          };
+          return mapRowToDatapoint(dp, comments);
         })
       );
 
@@ -183,6 +244,44 @@ export const fetchSections = async (): Promise<StandardSection[]> => {
   );
 
   return sectionsWithDatapoints;
+}
+
+function parseDatapointFromRpc(dp: any): Datapoint {
+  const cm = Array.isArray(dp.comments) ? dp.comments : [];
+  const { comments: _drop, ...rest } = dp;
+  return mapRowToDatapoint(rest, cm);
+}
+
+async function fetchSectionsRpcImpl(): Promise<StandardSection[]> {
+  const cycleId = resolveReportingCycleIdForApi();
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/get_reporting_pack`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({
+      p_organization_id: resolveOrganizationIdForApi(),
+      p_reporting_cycle_id: cycleId && /^[0-9a-f-]{36}$/i.test(cycleId) ? cycleId : null
+    })
+  });
+  const raw = await handleResponse(response);
+  const rows = Array.isArray(raw) ? raw : [];
+  return rows.map((section: any) => ({
+    id: section.id,
+    code: section.code,
+    title: section.title,
+    datapoints: (section.datapoints || []).map(parseDatapointFromRpc)
+  }));
+}
+
+export const fetchSections = async (): Promise<StandardSection[]> => {
+  if (!isSupabaseConfigured()) {
+    throw new ApiServiceError('Supabase not configured', 'CONFIG_ERROR');
+  }
+
+  const ms = Number(import.meta.env.VITE_API_FETCH_TIMEOUT_MS) || DEFAULT_FETCH_TIMEOUT_MS;
+  if (import.meta.env.VITE_USE_REPORTING_PACK_RPC === 'true') {
+    return withTimeout(fetchSectionsRpcImpl(), ms, 'fetchSectionsRpc');
+  }
+  return withTimeout(fetchSectionsImpl(), ms, 'fetchSections');
 };
 
 export const updateDatapoint = async (
@@ -210,6 +309,10 @@ export const updateDatapoint = async (
   if (updates.consolidatedValue !== undefined) dbUpdates.consolidated_value = updates.consolidatedValue;
   if (updates.breakdowns !== undefined) dbUpdates.breakdowns = updates.breakdowns;
   if (updates.lastConsolidated !== undefined) dbUpdates.last_consolidated = updates.lastConsolidated;
+  if (updates.reportingFrequency !== undefined)
+    dbUpdates.reporting_frequency = updates.reportingFrequency;
+  if (updates.assignedToUserId !== undefined)
+    dbUpdates.assigned_to_user_id = updates.assignedToUserId;
 
   const response = await fetch(`${SUPABASE_URL}/rest/v1/datapoints?id=eq.${datapointId}`, {
     method: 'PATCH',
@@ -218,7 +321,9 @@ export const updateDatapoint = async (
   });
 
   const data = await handleResponse(response);
-  return data[0];
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) return updates as unknown as Datapoint;
+  return mapRowToDatapoint(row, []);
 };
 
 export const addComment = async (
@@ -443,3 +548,73 @@ export const getApiStatus = (): { configured: boolean; url?: string } => {
     url: SUPABASE_URL || undefined
   };
 };
+
+// ============================================
+// AUDIT (tabla audit_logs unificada — migración 005)
+// ============================================
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export async function appendAuditEventRemote(entry: AuditLogEntry): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+
+  const orgId = resolveOrganizationIdForApi();
+  const body: Record<string, unknown> = {
+    organization_id: UUID_RE.test(entry.organizationId) ? entry.organizationId : orgId,
+    action: String(entry.action).slice(0, 50),
+    resource_type: entry.resourceType,
+    resource_target_id: entry.resourceId,
+    actor_display_name: entry.actorName,
+    metadata: {
+      ...(entry.details ?? {}),
+      client_event_id: entry.id,
+      client_timestamp: entry.timestamp
+    }
+  };
+
+  if (UUID_RE.test(entry.actorUserId)) {
+    body.user_id = entry.actorUserId;
+  }
+
+  if (entry.resourceType === 'datapoint' && UUID_RE.test(entry.resourceId)) {
+    body.datapoint_id = entry.resourceId;
+  }
+
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/audit_logs`, {
+    method: 'POST',
+    headers: { ...getHeaders(), Prefer: 'return=minimal' },
+    body: JSON.stringify(body)
+  });
+
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(err || 'audit_logs insert failed');
+  }
+}
+
+export async function fetchAuditEventsRemote(): Promise<AuditLogEntry[]> {
+  if (!isSupabaseConfigured()) return [];
+
+  const response = await fetch(
+    `${SUPABASE_URL}/rest/v1/audit_logs?select=*&order=created_at.desc&limit=500`,
+    { headers: getHeaders() }
+  );
+
+  if (!response.ok) return [];
+
+  const data = await response.json();
+  return (data as any[]).map(row => {
+    const meta = (row.metadata || {}) as Record<string, unknown>;
+    return {
+      id: String(meta.client_event_id || row.id),
+      organizationId: String(row.organization_id || ''),
+      timestamp: row.created_at || new Date().toISOString(),
+      actorUserId: row.user_id ? String(row.user_id) : String(row.actor_display_name || 'unknown'),
+      actorName: row.actor_display_name,
+      action: (row.action as AuditLogEntry['action']) || 'update',
+      resourceType: (row.resource_type as AuditLogEntry['resourceType']) || 'datapoint',
+      resourceId: String(row.resource_target_id || row.datapoint_id || ''),
+      details: meta as Record<string, unknown>
+    };
+  });
+}

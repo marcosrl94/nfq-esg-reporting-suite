@@ -1,19 +1,20 @@
-import React, { useState, useMemo } from 'react';
-import { FileBarChart, Download, FileText, CheckCircle2, AlertCircle, Clock, X, FileDown, Printer } from 'lucide-react';
-import { StandardSection, WorkflowStatus } from '../types';
-import { useSections } from '../contexts';
-import { useMobile } from '../hooks/useMobile';
+import React from 'react';
+import { FinalReportGuided } from './FinalReportGuided';
 
 interface FinalReportProps {
   reportingYear: number;
 }
 
 const FinalReport: React.FC<FinalReportProps> = ({ reportingYear }) => {
+  return <FinalReportGuided reportingYear={reportingYear} />;
   const { sections } = useSections();
   const { isMobile } = useMobile();
   const [selectedFormat, setSelectedFormat] = useState<'pdf' | 'html' | 'xbrl'>('pdf');
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedReport, setGeneratedReport] = useState<string | null>(null);
+  const [showConfiguration, setShowConfiguration] = useState(true); // Mostrar por defecto
+  const [reportConfig, setReportConfig] = useState<ReportConfigType | null>(null);
+  const [generationProgress, setGenerationProgress] = useState({ progress: 0, message: '' });
 
   // Filter approved datapoints
   const approvedSections = useMemo(() => {
@@ -42,28 +43,65 @@ const FinalReport: React.FC<FinalReportProps> = ({ reportingYear }) => {
   }, [approvedSections]);
 
   const generateReport = async () => {
+    if (!reportConfig) {
+      alert('Por favor, configura el reporte primero antes de generarlo.');
+      setShowConfiguration(true);
+      return;
+    }
+
     setIsGenerating(true);
+    setGenerationProgress({ progress: 0, message: 'Iniciando...' });
+    
     try {
-      // Simulate report generation
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // In a real implementation, this would:
-      // 1. Collect all approved datapoints
-      // 2. Generate narratives for each section
-      // 3. Format according to selected format (PDF/HTML/XBRL)
-      // 4. Return the generated report URL or blob
-      
-      const reportContent = generateReportContent();
-      setGeneratedReport(reportContent);
+      // Usar el servicio avanzado de generación
+      const comprehensiveReport = await generateComprehensiveReport(
+        sections,
+        reportConfig,
+        reportingYear,
+        (progress, message) => {
+          setGenerationProgress({ progress, message });
+        }
+      );
+
+      // Generar HTML según formato seleccionado
+      if (selectedFormat === 'html') {
+        const htmlContent = generateHTMLReport(comprehensiveReport, reportConfig);
+        setGeneratedReport(htmlContent);
+      } else {
+        // Fallback a texto plano para otros formatos
+        const reportContent = generateReportContent(comprehensiveReport);
+        setGeneratedReport(reportContent);
+      }
     } catch (error) {
       console.error('Error generating report:', error);
       alert('Error al generar el reporte. Por favor, inténtalo de nuevo.');
     } finally {
       setIsGenerating(false);
+      setGenerationProgress({ progress: 0, message: '' });
     }
   };
 
-  const generateReportContent = (): string => {
+  const generateReportContent = (comprehensiveReport?: GeneratedReport): string => {
+    if (comprehensiveReport) {
+      // Usar reporte comprehensivo si está disponible
+      let content = `${comprehensiveReport.metadata.generatedBy || 'Organización'} - Annual ESG Report ${reportingYear}\n`;
+      content += `Generated: ${new Date(comprehensiveReport.metadata.generatedAt).toLocaleDateString('es-ES')}\n`;
+      content += `Estándares: ${comprehensiveReport.configuration.standards.join(', ')}\n\n`;
+      
+      comprehensiveReport.sections.forEach(section => {
+        content += `\n=== ${section.sectionCode}: ${section.sectionTitle} ===\n\n`;
+        if (section.narrative) {
+          content += `${section.narrative}\n\n`;
+        }
+        section.datapoints.forEach(dp => {
+          content += `${dp.code}: ${dp.name} = ${dp.value} ${dp.unit || ''}\n`;
+        });
+      });
+      
+      return content;
+    }
+    
+    // Fallback al método anterior
     let content = `NFQ ESG Reporting Suite - Annual Report ${reportingYear}\n`;
     content += `Generated: ${new Date().toLocaleDateString('es-ES')}\n\n`;
     content += `=== REPORT STATISTICS ===\n`;
@@ -114,8 +152,9 @@ const FinalReport: React.FC<FinalReportProps> = ({ reportingYear }) => {
   };
 
   const exportToHTML = async () => {
-    const htmlContent = generateHTMLReport();
-    const blob = new Blob([htmlContent], { type: 'text/html' });
+    if (!generatedReport) return;
+    
+    const blob = new Blob([generatedReport], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -195,10 +234,67 @@ const FinalReport: React.FC<FinalReportProps> = ({ reportingYear }) => {
             Final Report Composition
           </h2>
           <p className="text-xs sm:text-sm text-[#6a6a6a] mt-1">
-            Genera y exporta el reporte final consolidado
+            Genera y exporta el reporte final consolidado alineado con mejores prácticas
           </p>
         </div>
+        <button
+          onClick={() => setShowConfiguration(!showConfiguration)}
+          className={`px-4 py-2 rounded-lg border-2 flex items-center gap-2 transition-colors font-medium ${
+            showConfiguration
+              ? 'bg-[#0066ff] border-[#0066ff] text-white shadow-lg shadow-[#0066ff]/30'
+              : 'bg-[#1a1a1a] border-[#2a2a2a] text-[#cccccc] hover:border-[#0066ff] hover:bg-[#1e1e1e]'
+          }`}
+        >
+          <Settings className={`w-5 h-5 ${showConfiguration ? 'animate-pulse' : ''}`} />
+          <span className="text-sm font-semibold">
+            {showConfiguration ? 'Ocultar Configuración' : 'Configurar Reporte'}
+          </span>
+        </button>
       </div>
+
+      {/* Configuration Panel */}
+      {showConfiguration && (
+        <div className="bg-[#1e1e1e] border-2 border-[#0066ff]/50 rounded-lg p-4 sm:p-6 shadow-lg">
+          <div className="flex items-center justify-between mb-4 pb-3 border-b border-[#2a2a2a]">
+            <div className="flex items-center gap-2">
+              <Settings className="w-5 h-5 text-[#0066ff]" />
+              <h3 className="text-lg font-bold text-white">Configuración del Reporte</h3>
+            </div>
+            <button
+              onClick={() => setShowConfiguration(false)}
+              className="text-[#6a6a6a] hover:text-white transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <ReportConfiguration
+            sections={sections}
+            reportingYear={reportingYear}
+            onConfigurationChange={(config) => {
+              setReportConfig(config);
+            }}
+            initialConfig={reportConfig || undefined}
+          />
+        </div>
+      )}
+
+      {/* Alert si no hay configuración */}
+      {!reportConfig && (
+        <div className="bg-blue-900/20 border-2 border-blue-500/50 rounded-lg p-4 sm:p-6">
+          <div className="flex items-start gap-3">
+            <Info className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-blue-400 mb-1">
+                ⚙️ Configura el reporte antes de generarlo
+              </p>
+              <p className="text-xs text-blue-300">
+                Usa el botón <strong>"Configurar Reporte"</strong> arriba a la derecha para seleccionar estándares, 
+                configurar secciones y aplicar mejores prácticas. El panel de configuración debería estar visible arriba.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Statistics Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
@@ -289,11 +385,27 @@ const FinalReport: React.FC<FinalReportProps> = ({ reportingYear }) => {
         </div>
       )}
 
+      {/* Generation Progress */}
+      {isGenerating && generationProgress.message && (
+        <div className="bg-[#1e1e1e] border border-[#2a2a2a] rounded-lg p-4">
+          <div className="flex items-center gap-3 mb-2">
+            <Clock className="w-5 h-5 text-[#0066ff] animate-spin" />
+            <span className="text-sm text-white">{generationProgress.message}</span>
+          </div>
+          <div className="w-full bg-[#0a0a0a] rounded-full h-2">
+            <div
+              className="bg-[#0066ff] h-2 rounded-full transition-all duration-300"
+              style={{ width: `${generationProgress.progress}%` }}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Generate Report */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4">
         <button
           onClick={generateReport}
-          disabled={isGenerating || approvedSections.length === 0}
+          disabled={isGenerating || approvedSections.length === 0 || !reportConfig}
           className="flex-1 sm:flex-none px-6 py-3 bg-[#0066ff] hover:bg-[#0052cc] text-white rounded-lg font-medium flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {isGenerating ? (
