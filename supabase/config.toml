@@ -38,8 +38,5 @@ enable_signup = true
 double_confirm_changes = true
 enable_confirmations = false
 
-[functions]
-verify_jwt = true
-
 [functions.gemini-proxy]
 verify_jwt = true
