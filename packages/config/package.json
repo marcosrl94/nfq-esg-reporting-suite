@@ -1,0 +1,11 @@
+{
+  "name": "@geshop/config",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./eslint-base.js",
+  "exports": {
+    "./eslint": "./eslint-base.js",
+    "./tsconfig": "../../tsconfig.base.json"
+  }
+}

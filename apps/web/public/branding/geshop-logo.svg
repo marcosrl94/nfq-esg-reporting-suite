@@ -1,0 +1,23 @@
+<svg viewBox="0 0 480 140" xmlns="http://www.w3.org/2000/svg" role="img">
+  <title>GEShop logo — primary horizontal lockup</title>
+  <desc>GEShop wordmark with leaf-arrow mark, under the GSV (Green Strategic Value) brand. For use on light backgrounds.</desc>
+  <defs>
+    <linearGradient id="darkGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0F3D2E"/>
+      <stop offset="100%" stop-color="#062019"/>
+    </linearGradient>
+    <linearGradient id="leafGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34D399"/>
+      <stop offset="100%" stop-color="#10B981"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(10, 10)">
+    <rect width="120" height="120" rx="22" fill="url(#darkGrad)"/>
+    <path d="M 35 90 C 35 60, 60 35, 90 35 C 92 70, 70 92, 35 90 Z" fill="url(#leafGrad)"/>
+    <line x1="35" y1="90" x2="90" y2="35" stroke="#FAFAF7" stroke-width="2.5" stroke-linecap="round"/>
+    <line x1="90" y1="35" x2="78" y2="35" stroke="#FAFAF7" stroke-width="2.5" stroke-linecap="round"/>
+    <line x1="90" y1="35" x2="90" y2="47" stroke="#FAFAF7" stroke-width="2.5" stroke-linecap="round"/>
+    <text x="148" y="68" font-family="Inter, system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="56" font-weight="500" fill="#0A2E1F" letter-spacing="-1.5">GEShop</text>
+    <text x="151" y="96" font-family="ui-monospace, 'SF Mono', Menlo, monospace" font-size="11" font-weight="400" fill="#10B981" letter-spacing="3.5">GREEN  STRATEGIC  VALUE</text>
+  </g>
+</svg>

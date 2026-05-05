@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+/*
+ * GSV brand tokens
+ * Colors documented in /branding/BRAND_GUIDELINES.md
+ */
+@theme {
+  --color-forest: #0f3d2e;
+  --color-forest-deep: #062019;
+  --color-emerald-brand: #10b981;
+  --color-sprout: #34d399;
+  --color-cream: #fafaf7;
+  --color-charcoal: #1a1a1a;
+
+  --font-sans:
+    "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono:
+    ui-monospace, "SF Mono", "Menlo", "Consolas", monospace;
+}
+
+html,
+body {
+  background-color: var(--color-cream);
+  color: var(--color-charcoal);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Tabular figures for data tables */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}

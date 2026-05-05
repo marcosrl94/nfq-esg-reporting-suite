@@ -1,201 +1,154 @@
-# NFQ ESG Reporting Suite
+# GEShop
 
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+> Mega suite ESG bajo la marca **GSV — Green Strategic Value**.
+>
+> Reescritura unificada de [`nfq-carbon-intelligence`](https://github.com/marcosrl94/nfq-carbon-intelligence) y [`nfq-esg-reporting-suite`](https://github.com/marcosrl94/nfq-esg-reporting-suite). Plan estratégico en [`../PLAN_MEGA_SUITE_ESG.md`](../PLAN_MEGA_SUITE_ESG.md).
 
-## Descripción
+## Estado
 
-Suite completa de reporting ESG (Environmental, Social, Governance) diseñada para cumplir con estándares como ESRS, GRI, ISSB, TCFD y SASB. La aplicación permite gestionar métricas ESG, evidencias, consolidación de datos y generación automática de narrativas usando IA.
+**F0 · Bootstrap.** Monorepo creado, splash funcionando, infra documentada. Carbon real llega en F1.
 
-## Características Principales
+Roadmap completo: [`docs/ROADMAP.md`](docs/ROADMAP.md). ADRs en [`docs/adr/`](docs/adr/).
 
-- 📊 **Gestión de Métricas ESG**: Captura y gestión de datapoints cuantitativos y cualitativos
-- 🔍 **Gestión de Evidencias**: Subida y análisis automático de evidencias con IA
-- 🔄 **Consolidación de Datos**: Consolidación multi-nivel por región, segmento de negocio, etc.
-- 🤖 **Generación de Narrativas**: Generación automática de narrativas ESRS-compliant usando Google Gemini
-- 👥 **Control de Acceso**: Sistema de roles (Admin, Data Owner, Auditor) con filtrado de datos
-- 📈 **Dashboard**: Visualización de KPIs y estadísticas en tiempo real
-- 📄 **Reportes Finales**: Generación y exportación de reportes en múltiples formatos
+> **Nota sobre el repo:** este monorepo vive en `nfq-esg-reporting-suite` (el repo histórico de la POC ESG). El código original ESG está en [`_legacy-esg/`](_legacy-esg/) como referencia para los trasplantes de F2-F3 (componentes, servicios IA, taxonomía ESRS). Cuando F2 y F3 cierren, `_legacy-esg/` se borra. El repo se renombrará a `geshop` en GitHub cuando estabilicemos.
 
-## Tecnologías
-
-- **Frontend**: React 19 + TypeScript
-- **Styling**: Tailwind CSS (Tema PALANTIR-inspired)
-- **IA**: Google Gemini API (@google/genai)
-- **Visualización**: Recharts
-- **Build**: Vite
-- **Backend del producto (cliente)**: **Supabase** — Postgres (PostgREST), Auth, Storage, Edge Functions. La app usa [`services/apiService.ts`](services/apiService.ts) y [`services/dataPlane.ts`](services/dataPlane.ts); no hay una segunda API paralela para CRUD de datapoints.
-- **Carpeta `backend/`**: Express de **referencia** o futuros workers batch; ver [`backend/README.md`](backend/README.md).
-
-## Arquitectura en una frase
-
-En producción, Supabase es la fuente de verdad. El modo demo (sin Supabase) solo aplica en desarrollo local.
-
-## Requisitos Previos
-
-- Node.js (versión 18 o superior)
-- Cuenta de Google con acceso a Gemini API
-- (Opcional) Cuenta de Supabase para persistencia de datos
-
-## Instalación
-
-1. **Clonar el repositorio**:
-   ```bash
-   git clone <tu-repositorio>
-   cd nfq-esg-reporting-suite
-   ```
-
-2. **Instalar dependencias**:
-   ```bash
-   npm install
-   ```
-
-3. **Variables de entorno**:
-   
-   Copia [`.env.example`](./.env.example) a `.env.local` y configura al menos Supabase en entornos reales.
-   
-   **Gemini en desarrollo**: puedes usar `GEMINI_API_KEY` o `VITE_GEMINI_API_KEY` en `.env.local` (la clave se inyecta en el bundle; solo para entorno local).
-   
-   **Gemini en producción**: despliega la Edge Function `gemini-proxy` (carpeta `supabase/functions/gemini-proxy`), configura el secreto `GEMINI_API_KEY` en el proyecto Supabase (`supabase secrets set GEMINI_API_KEY=...`) y activa `VITE_GEMINI_USE_PROXY=true` en el front **sin** exponer la clave en Vite.
-   
-   Obtén una clave en: https://aistudio.google.com/app/apikey
-
-4. **Ejecutar la aplicación**:
-   ```bash
-   npm run dev
-   ```
-
-5. **Abrir en el navegador**:
-   ```
-   http://localhost:3000
-   ```
-
-## Configuración de Base de Datos (Opcional)
-
-Para usar Supabase como backend:
-
-1. Crea un proyecto en [Supabase](https://supabase.com)
-2. Ejecuta el script SQL en `database/schema.sql`
-3. Configura las variables de entorno en `.env.local`:
-   ```
-   VITE_SUPABASE_URL=tu_url_de_supabase
-   VITE_SUPABASE_ANON_KEY=tu_clave_anonima
-   ```
-
-En **desarrollo**, sin Supabase puedes usar el modo demo (datos locales en el bundle). En **producción** hace falta Supabase: el login demo no está disponible en el build publicado.
-
-Variables útiles: `VITE_ORGANIZATION_ID`, `VITE_REPORTING_CYCLE_ID`, `VITE_USE_REPORTING_PACK_RPC`, `VITE_ENABLE_ORG_FILTER`. Ver `services/dataPlane.ts` y `services/apiService.ts`.
-
-## Estructura del Proyecto
-
-```
-nfq-esg-reporting-suite/
-├── components/          # Componentes React
-│   ├── Dashboard.tsx
-│   ├── DataInput.tsx
-│   ├── DataConsolidator.tsx
-│   ├── EvidenceManager.tsx
-│   ├── NarrativeEngine.tsx
-│   └── ...
-├── contexts/            # Context API para estado global
-│   ├── SectionsContext.tsx
-│   ├── UsersContext.tsx
-│   └── AppViewContext.tsx
-├── services/            # Servicios y lógica de negocio
-│   ├── geminiService.ts
-│   ├── consolidationService.ts
-│   ├── evidenceService.ts
-│   └── ...
-├── database/            # Scripts SQL
-│   └── schema.sql
-├── types.ts             # Definiciones TypeScript
-└── ...
-```
-
-## Documentación
-
-### 🏗️ Arquitectura Empresarial (Nuevo)
-
-- **[EXECUTIVE_SUMMARY.md](./EXECUTIVE_SUMMARY.md)** - Resumen ejecutivo para stakeholders
-- **[ENTERPRISE_ARCHITECTURE.md](./ENTERPRISE_ARCHITECTURE.md)** - Arquitectura completa enterprise-ready
-- **[IMPLEMENTATION_EXAMPLES.md](./IMPLEMENTATION_EXAMPLES.md)** - Ejemplos de código e implementación
-
-### Operación y despliegue
-
-- **[RUNBOOK.md](./RUNBOOK.md)** — Supabase, Edge Function Gemini, Vercel y checklist de release
-
-### 📚 Documentación Técnica Existente
-
-- [ARCHITECTURE.md](./ARCHITECTURE.md) - Arquitectura Enterprise-Ready (POC)
-- [CONSOLIDATION_ARCHITECTURE.md](./CONSOLIDATION_ARCHITECTURE.md) - Arquitectura de Consolidación
-- [EVIDENCE_CONSOLIDATION.md](./EVIDENCE_CONSOLIDATION.md) - Gestión de Evidencias
-- [CONFIGURACION_API_KEY.md](./CONFIGURACION_API_KEY.md) - Configuración de API Key
-- [PALANTIR_THEME.md](./PALANTIR_THEME.md) - Tema Visual
-
-## Uso
-
-### Login
-
-- Con **Supabase** configurado: email/contraseña vía Supabase Auth y tabla `public.users`.
-- Sin Supabase **solo en `npm run dev`**: acceso rápido demo (usuarios ficticios). No usar en producción.
-- Para forzar demo en builds no productivos: `VITE_ALLOW_DEMO_LOGIN=true` (evitar en despliegues reales).
-
-### Seguridad operativa (resumen)
-
-- **Gemini**: con `VITE_GEMINI_USE_PROXY=true` y la Edge Function `gemini-proxy`, la clave vive solo en secretos Supabase (`GEMINI_API_KEY`). Sin proxy, la clave en `.env.local` se inyecta en el bundle (solo para desarrollo local).
-- **Sentry** (opcional): define `VITE_SENTRY_DSN` en `.env.local` para informes de error en el cliente.
-- **Supabase**: RLS y migraciones en `supabase/migrations/`; revisar `organization_id` y políticas antes de producción.
-- **Carpeta `backend/`**: API Express de referencia; por defecto la autenticación insegura por cabeceras está **desactivada**. Ver `backend/README.md`.
-
-### Gestión de Datos
-
-1. Selecciona una sección estándar (ej: E1 - Climate Change)
-2. Ingresa valores para los datapoints
-3. Sube evidencias asociadas
-4. Usa la consolidación para métricas multi-responsable
-
-### Generación de Narrativas
-
-1. Ve a "Narrative Engine"
-2. Selecciona una sección
-3. Elige el tono de la narrativa
-4. Haz clic en "Generate Narrative"
-
-## Edge Function Gemini (Supabase)
-
-```bash
-# Una vez vinculado el proyecto con Supabase CLI:
-supabase secrets set GEMINI_API_KEY=tu_clave --project-ref TU_REF
-supabase functions deploy gemini-proxy --project-ref TU_REF
-```
-
-En local: `supabase functions serve gemini-proxy --env-file ./supabase/.env.local` (definir `GEMINI_API_KEY` en ese archivo).
-
-## Scripts Disponibles
-
-- `npm run dev` - Inicia servidor de desarrollo
-- `npm run build` - Construye para producción
-- `npm run preview` - Previsualiza build de producción
-
-## Contribuir
-
-Las contribuciones son bienvenidas. Por favor:
-
-1. Fork el proyecto
-2. Crea una rama para tu feature (`git checkout -b feature/AmazingFeature`)
-3. Commit tus cambios (`git commit -m 'Add some AmazingFeature'`)
-4. Push a la rama (`git push origin feature/AmazingFeature`)
-5. Abre un Pull Request
-
-## Licencia
-
-Este proyecto es privado y propietario.
-
-## Soporte
-
-Para problemas o preguntas, abre un issue en el repositorio.
+> **Proyecto Supabase:** [`dkfwfculonlnhoabxszw`](https://supabase.com/dashboard/project/dkfwfculonlnhoabxszw) — creado por Marcos. Distinto del de carbon en prod.
 
 ---
 
-**Desarrollado con ❤️ para reporting ESG enterprise-ready**
+## Arrancar en local
+
+Pre-requisitos:
+- Node.js 20.18+ (`nvm use` lee `.nvmrc`).
+- pnpm 9.15+.
+
+```bash
+# Ya tienes el repo clonado en local. Desde su raíz:
+pnpm install
+
+# Levantar la app
+pnpm dev
+# → http://localhost:3000
+
+# Otros comandos útiles
+pnpm typecheck    # tsc --noEmit en todos los paquetes
+pnpm lint         # eslint
+pnpm build        # build de producción
+pnpm clean        # borra node_modules + .next + .turbo
+```
+
+> En F0 la app es solo un splash con el logo y el estado del roadmap. La funcionalidad real (login, dashboards, emissions) llega en F1.
+
+## Variables de entorno
+
+Copia [`apps/web/.env.example`](apps/web/.env.example) a `apps/web/.env.local` y rellena. Supabase y Resend son obligatorios para F1; Gemini es opcional hasta F3.
+
+```bash
+cp apps/web/.env.example apps/web/.env.local
+$EDITOR apps/web/.env.local
+```
+
+## Estructura
+
+```
+geshop/
+├── apps/
+│   └── web/                   # Next.js 16 — la única app activa
+├── packages/
+│   ├── ui/                    # Componentes compartidos (poblado en F1)
+│   ├── db/                    # Cliente Supabase + tipos generados (F1)
+│   ├── ai/                    # Wrappers Gemini (F3)
+│   └── config/                # ESLint + tsconfig compartidos
+├── supabase/
+│   ├── config.toml            # CLI de Supabase
+│   ├── migrations/            # SQL versionado (vacío en F0)
+│   └── functions/
+│       └── gemini-proxy/      # Edge Function
+├── docs/
+│   ├── adr/                   # Architecture Decision Records
+│   └── ROADMAP.md             # Estado de fases
+└── .github/workflows/
+    └── ci.yml                 # typecheck + lint + build
+```
+
+## Branding
+
+Identidad visual completa en [`../branding/`](../branding/):
+- `geshop-logo.svg` (lockup horizontal, claro)
+- `geshop-logo-dark.svg` (invertido para fondos oscuros)
+- `geshop-icon.svg` (cuadrado, favicon/app icon)
+- `BRAND_GUIDELINES.md`
+
+Los SVGs ya están copiados en [`apps/web/public/branding/`](apps/web/public/branding/).
+
+## Setup inicial · qué te queda por hacer (Marcos)
+
+### 1. GitHub
+
+El repo ya existe en `marcosrl94/nfq-esg-reporting-suite` (donde estabas haciendo la POC ESG). El monorepo nuevo se ha trasplantado a la raíz manteniendo el `.git`. Solo queda commitear la migración:
+
+```bash
+git status                                 # debería ver cientos de cambios (legacy → _legacy-esg + scaffold nuevo)
+git add .
+git commit -m "feat: convertir el repo en monorepo GEShop bajo marca GSV
+
+- Mueve el código original (Vite + Express) a _legacy-esg/ como referencia
+  para los trasplantes de F2-F3 (componentes, services IA, taxonomía ESRS).
+- Trae el scaffold geshop a la raíz: monorepo Turborepo + pnpm workspaces,
+  apps/web con Next.js 16 + Tailwind 4, packages/{ui,db,ai,config} stubs,
+  supabase/{config.toml,functions/gemini-proxy} listos.
+- Cablea el proyecto Supabase real: dkfwfculonlnhoabxszw.
+
+Cierra F0 del plan; F1 (trasplante carbon) abre a continuación."
+git push origin main
+```
+
+Cuando F2/F3 cierren y `_legacy-esg/` ya no haga falta, renombrar el repo en GitHub:
+```bash
+gh repo rename geshop --repo marcosrl94/nfq-esg-reporting-suite
+```
+
+### 2. Supabase (proyecto ya creado: `dkfwfculonlnhoabxszw`)
+
+```bash
+# Login + link al proyecto que ya tienes
+supabase login
+supabase link --project-ref dkfwfculonlnhoabxszw
+
+# Edge Function (la copia de la POC ESG está en supabase/functions/gemini-proxy)
+supabase functions deploy gemini-proxy --project-ref dkfwfculonlnhoabxszw
+supabase secrets set GEMINI_API_KEY=tu_clave_de_gemini --project-ref dkfwfculonlnhoabxszw
+
+# Migrations en F0 vacío. En F1 se trasplantan las 21 de carbon-intelligence:
+# cp ../nfq-carbon-intelligence/supabase/migrations/*.sql supabase/migrations/
+# supabase db push
+```
+
+### 3. Vercel
+
+1. https://vercel.com/new → importar `marcosrl94/nfq-esg-reporting-suite` (lo que renombraremos a `geshop` más tarde).
+2. Root directory: dejar vacío (Vercel detecta el monorepo Turborepo automáticamente). Si pide explicit: `apps/web`.
+3. Variables de entorno: copiar las de `apps/web/.env.local` (Supabase URL + anon key + service role key + RESEND_API_KEY).
+4. Deploy.
+
+## Convenciones
+
+- **Idioma:** strings de UI en ES por defecto (cliente hispano). i18n EN se añade cuando entre cliente o piloto fuera del mercado ibérico.
+- **Sentence case** en todo (no Title Case ni ALL CAPS, salvo el tagline GSV).
+- **TypeScript strict.** No `any` salvo justificación en el PR.
+- **Server Components por defecto.** `"use client"` solo cuando hace falta interactividad real.
+- **Tailwind 4 con tokens** en `var(--color-forest|emerald-brand|sprout|cream|charcoal)`.
+- **Migraciones Supabase nunca se editan retroactivamente.** Se añade una nueva migración con timestamp más reciente.
+
+## Política de IA
+
+Resumen — detalle en [`docs/adr/0003-ai-policy.md`](docs/adr/0003-ai-policy.md):
+
+1. La key de Gemini nunca llega al bundle. Solo Edge Function.
+2. Cada invocación se loggea en `audit_log_entries`.
+3. Confianza visible. Workflow obligatorio "AI-suggested → human approves".
+4. Fallback always-on. La IA es additive, never required.
+
+## Licencia
+
+Privado y propietario. Todos los derechos reservados — GSV.

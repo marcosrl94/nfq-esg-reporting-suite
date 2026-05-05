@@ -1,0 +1,19 @@
+<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" role="img">
+  <title>GEShop icon</title>
+  <desc>Square icon for GEShop — favicon, app icon, social avatar. Leaf-arrow on deep green rounded square.</desc>
+  <defs>
+    <linearGradient id="darkGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0F3D2E"/>
+      <stop offset="100%" stop-color="#062019"/>
+    </linearGradient>
+    <linearGradient id="leafGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34D399"/>
+      <stop offset="100%" stop-color="#10B981"/>
+    </linearGradient>
+  </defs>
+  <rect width="120" height="120" rx="22" fill="url(#darkGrad)"/>
+  <path d="M 35 90 C 35 60, 60 35, 90 35 C 92 70, 70 92, 35 90 Z" fill="url(#leafGrad)"/>
+  <line x1="35" y1="90" x2="90" y2="35" stroke="#FAFAF7" stroke-width="2.5" stroke-linecap="round"/>
+  <line x1="90" y1="35" x2="78" y2="35" stroke="#FAFAF7" stroke-width="2.5" stroke-linecap="round"/>
+  <line x1="90" y1="35" x2="90" y2="47" stroke="#FAFAF7" stroke-width="2.5" stroke-linecap="round"/>
+</svg>
