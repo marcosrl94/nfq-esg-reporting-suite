@@ -21,7 +21,7 @@ comment on column public.organizations.created_by_user_id is 'Creador en bootstr
 drop policy if exists "org_select" on public.organizations;
 create policy "org_select" on public.organizations
   for select using (
-    id = (select p.organization_id from public.profiles p where p.id = auth.uid() limit 1)
+    id = (select p.organization_id from public.users p where p.id = auth.uid() limit 1)
     or created_by_user_id = auth.uid()
   );
 
@@ -31,7 +31,7 @@ create policy "org_insert_first" on public.organizations
     auth.uid() is not null
     and created_by_user_id = auth.uid()
     and not exists (
-      select 1 from public.profiles p
+      select 1 from public.users p
       where p.id = auth.uid() and p.organization_id is not null
     )
   );

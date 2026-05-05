@@ -1,4 +1,14 @@
-export type UserRole = 'admin' | 'analyst' | 'client' | 'auditor'
+/**
+ * Roles del modelo unificado ESG + Carbon. Coinciden con el CHECK de
+ * public.users.role (migración 20250420120000_users_role_unify_and_bootstrap).
+ */
+export type UserRole =
+  | 'admin'
+  | 'sustainability_lead'
+  | 'analyst'
+  | 'data_owner'
+  | 'client'
+  | 'auditor'
 export type InventoryStatus = 'draft' | 'submitted' | 'verified'
 export type Scope = 's1' | 's2' | 's3'
 export type DisclosureFramework = 'TCFD' | 'ESRS' | 'AMBOS'
@@ -159,13 +169,21 @@ export interface BaseYearRecalculation {
   applied_notes: string | null
 }
 
-export interface Profile {
+/**
+ * Fila de public.users — modelo unificado ESG + Carbon.
+ * Anteriormente se llamaba Profile (Carbon usaba public.profiles); en el
+ * esquema unificado la tabla canónica es public.users (modelo ESG ampliado).
+ */
+export interface UserAccount {
   id: string
   organization_id: string | null
   role: UserRole
-  full_name: string | null
-  email: string | null
+  name: string
+  email: string
+  department: string | null
+  avatar: string | null
   created_at: string
+  updated_at: string
 }
 
 export interface GHGInventory {
@@ -346,12 +364,24 @@ export interface RegulatoryDisclosure {
   updated_at: string
 }
 
+/**
+ * Fila de public.audit_logs — modelo unificado ESG + Carbon.
+ * ESG la diseñó polimórfica (resource_type / resource_target_id) y con
+ * separación old_value / new_value / metadata; Carbon escribe sobre ella
+ * a través del helper public.log_audit() en formato compatible.
+ */
 export interface AuditLogEntry {
-  id: number
-  organization_id: string | null
+  id: string
+  datapoint_id: string | null
   user_id: string | null
   action: string
-  payload: Record<string, unknown> | null
+  old_value: Record<string, unknown> | null
+  new_value: Record<string, unknown> | null
+  metadata: Record<string, unknown> | null
+  organization_id: string | null
+  resource_type: string | null
+  resource_target_id: string | null
+  actor_display_name: string | null
   created_at: string
 }
 

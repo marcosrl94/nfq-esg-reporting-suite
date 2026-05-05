@@ -11,7 +11,7 @@ stable
 security definer
 set search_path = public
 as $$
-  select organization_id from public.profiles where id = auth.uid() limit 1;
+  select organization_id from public.users where id = auth.uid() limit 1;
 $$;
 
 comment on function public.app_user_org() is 'RLS: organization_id de auth.uid()';
@@ -31,7 +31,7 @@ begin
   if p_org is null then
     return;
   end if;
-  insert into public.audit_log_entries (organization_id, user_id, action, payload)
+  insert into public.audit_logs (organization_id, user_id, action, metadata)
   values (p_org, auth.uid(), p_action, p_payload);
 end;
 $$;
@@ -158,13 +158,13 @@ create trigger trg_audit_inv
 
 -- ——— RLS ———
 alter table public.organizations enable row level security;
-alter table public.profiles enable row level security;
+alter table public.users enable row level security;
 alter table public.ghg_inventories enable row level security;
 alter table public.emission_entries enable row level security;
 alter table public.decarb_targets enable row level security;
 alter table public.regulatory_disclosures enable row level security;
 alter table public.invitations enable row level security;
-alter table public.audit_log_entries enable row level security;
+alter table public.audit_logs enable row level security;
 
 drop policy if exists "org_select" on public.organizations;
 create policy "org_select" on public.organizations
@@ -179,24 +179,24 @@ create policy "org_insert_first" on public.organizations
   for insert with check (
     auth.uid() is not null
     and not exists (
-      select 1 from public.profiles p
+      select 1 from public.users p
       where p.id = auth.uid() and p.organization_id is not null
     )
   );
 
-drop policy if exists "profiles_read_org" on public.profiles;
-create policy "profiles_read_org" on public.profiles
+drop policy if exists "users_read_org" on public.users;
+create policy "users_read_org" on public.users
   for select using (
     id = auth.uid()
     or (organization_id is not null and organization_id = public.app_user_org())
   );
 
-drop policy if exists "profiles_update_self" on public.profiles;
-create policy "profiles_update_self" on public.profiles
+drop policy if exists "users_update_self" on public.users;
+create policy "users_update_self" on public.users
   for update using (id = auth.uid()) with check (id = auth.uid());
 
-drop policy if exists "profiles_insert_self" on public.profiles;
-create policy "profiles_insert_self" on public.profiles
+drop policy if exists "users_insert_self" on public.users;
+create policy "users_insert_self" on public.users
   for insert with check (id = auth.uid());
 
 -- Inventarios: mismo org
@@ -254,6 +254,6 @@ create policy "inv_invites" on public.invitations
   with check (organization_id = public.app_user_org());
 
 -- Auditoría: solo lectura de la org (escritura vía triggers security definer)
-drop policy if exists "audit_read_org" on public.audit_log_entries;
-create policy "audit_read_org" on public.audit_log_entries
+drop policy if exists "audit_read_org" on public.audit_logs;
+create policy "audit_read_org" on public.audit_logs
   for select using (organization_id = public.app_user_org());

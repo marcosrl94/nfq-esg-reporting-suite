@@ -35,7 +35,7 @@ export async function listOrphanedEvidenceBlobs(): Promise<ListResult> {
   if (!user) return { ok: false, error: 'No autenticado.' }
 
   const { data: profile } = await supabase
-    .from('profiles')
+    .from('users')
     .select('role, organization_id')
     .eq('id', user.id)
     .maybeSingle()
@@ -71,7 +71,7 @@ export async function purgeOrphanedEvidenceBlobs(): Promise<PurgeResult> {
   if (!user) return { ok: false, error: 'No autenticado.' }
 
   const { data: profile } = await supabase
-    .from('profiles')
+    .from('users')
     .select('role')
     .eq('id', user.id)
     .maybeSingle()

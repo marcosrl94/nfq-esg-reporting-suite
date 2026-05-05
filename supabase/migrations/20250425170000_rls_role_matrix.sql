@@ -34,7 +34,7 @@ stable
 security definer
 set search_path = public
 as $$
-  select role from public.profiles where id = auth.uid() limit 1;
+  select role from public.users where id = auth.uid() limit 1;
 $$;
 
 comment on function public.app_user_role() is 'RLS: rol del auth.uid() (admin/analyst/client/auditor) o NULL si aún no hay profile.';
@@ -218,15 +218,15 @@ create policy "org_update" on public.organizations
 -- ── profiles ────────────────────────────────────────────────────────────
 -- Ampliamos el update: el self-update sigue válido para cualquier rol;
 -- el admin puede modificar perfiles de su org (cambiar role/full_name).
-drop policy if exists "profiles_update_self" on public.profiles;
-drop policy if exists "profiles_update_admin" on public.profiles;
+drop policy if exists "users_update_self" on public.users;
+drop policy if exists "users_update_admin" on public.users;
 
-create policy "profiles_update_self" on public.profiles
+create policy "users_update_self" on public.users
   for update
   using (id = auth.uid())
   with check (id = auth.uid());
 
-create policy "profiles_update_admin" on public.profiles
+create policy "users_update_admin" on public.users
   for update
   using (
     organization_id = public.app_user_org()
@@ -351,8 +351,8 @@ create policy "removals_delete" on public.carbon_removals
   );
 
 -- ── audit_log_entries (admin / auditor read) ────────────────────────────
-drop policy if exists "audit_read_org" on public.audit_log_entries;
-create policy "audit_read_org" on public.audit_log_entries
+drop policy if exists "audit_read_org" on public.audit_logs;
+create policy "audit_read_org" on public.audit_logs
   for select using (
     organization_id = public.app_user_org()
     and public.app_user_role() in ('admin', 'auditor')

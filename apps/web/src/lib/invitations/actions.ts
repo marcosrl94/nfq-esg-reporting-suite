@@ -38,7 +38,7 @@ export async function sendInvitationEmail(invitationId: string): Promise<ActionR
   if (!user) return { ok: false, error: 'No autenticado.' }
 
   const { data: caller } = await supabase
-    .from('profiles')
+    .from('users')
     .select('role, organization_id')
     .eq('id', user.id)
     .maybeSingle()
@@ -113,16 +113,17 @@ export async function acceptInvitation(token: string): Promise<ActionResult> {
     return { ok: false, error: 'Invitación sin organización asignada.' }
   }
 
-  // Actualizamos el profile del usuario con la org+role de la invitación
-  // (vía service role para evitar problemas si el profile aún no existía).
+  // Actualizamos la fila users del usuario con la org+role de la invitación
+  // (vía service role para evitar conflictos con la RLS users_update_self).
+  // La fila ya existe por el trigger handle_new_auth_user; aquí solo update.
   const { error: pErr } = await admin
-    .from('profiles')
-    .upsert({
-      id: user.id,
+    .from('users')
+    .update({
       organization_id: invitation.organization_id,
       role: invitation.role,
       email: user.email ?? invitation.email,
-    }, { onConflict: 'id' })
+    })
+    .eq('id', user.id)
   if (pErr) return { ok: false, error: `No se pudo actualizar el perfil: ${pErr.message}` }
 
   const { error: iErr } = await admin

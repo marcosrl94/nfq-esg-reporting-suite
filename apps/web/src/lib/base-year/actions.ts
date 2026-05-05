@@ -63,7 +63,7 @@ export async function proposeRecalculation(input: {
   if (!user) return { ok: false, error: 'No autenticado.' }
 
   const { data: profile } = await supabase
-    .from('profiles')
+    .from('users')
     .select('role, organization_id')
     .eq('id', user.id)
     .maybeSingle()

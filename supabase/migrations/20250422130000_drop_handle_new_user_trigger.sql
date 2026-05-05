@@ -1,14 +1,12 @@
--- Registro o Auth: si ves errores de base, suele ser el trigger on_auth_user_created
--- (función public.handle_new_user) fallando; el mensaje de Supabase Auth a veces engaña.
--- Al eliminarlo, el alta de org/perfil la hace la app (p. ej. al entrar al dashboard).
+-- ============================================================================
+-- F1.1 — Integración Carbon → ESG Reporting Suite
+-- ============================================================================
+-- NO-OP: la versión Carbon original dropeaba el trigger creado por la
+-- migración 20250422120000. Como esa migración es ahora también no-op (ver
+-- explicación allí), no hay nada que dropear: el trigger handle_new_auth_user
+-- de ESG vive en auth.users y debe permanecer.
 --
--- Cómo aplicar (elige una):
---   A) Supabase → SQL → New query: pega TODO este fichero y ejecuta.
---   B) En la raíz del repo, con .env.local (SUPABASE_DB_PASSWORD y URL del proyecto, o
---      SUPABASE_POSTGRES_URL del pooler si IPv6 falla):
---        npm run db:drop-auth-trigger
---
--- Requiere el rol/permiso de Postgres del proyecto; no basta con la anon key.
+-- Se mantiene como placeholder para preservar el orden cronológico del
+-- trasplante.
 
-drop trigger if exists on_auth_user_created on auth.users;
-drop function if exists public.handle_new_user();
+-- (sin operaciones)

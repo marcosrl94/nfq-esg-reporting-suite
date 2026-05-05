@@ -4,8 +4,8 @@ import type { User } from '@supabase/supabase-js'
 
 /**
  * Supabase-js devuelve PostgrestError con { message, code, details, hint }, pero
- * al loguear con console.error(label, err) sale "{}" porque no son propiedades enumerables
- * estándar. Esta función extrae lo útil para que el log real aparezca en el servidor.
+ * al loguear con console.error(label, err) sale "{}" porque no son propiedades
+ * enumerables estándar. Esta función extrae lo útil para que aparezca en el log.
  */
 function formatSbError(err: unknown): Record<string, unknown> {
   if (!err || typeof err !== 'object') return { raw: String(err) }
@@ -20,10 +20,18 @@ function formatSbError(err: unknown): Record<string, unknown> {
 }
 
 /**
- * Crea org + fila de perfil al primer acceso.
- * Por defecto usa la sesión del usuario y las políticas RLS
- * `org_insert_first` + `profiles_insert_self` (20250423140000_rls_and_audit_triggers.sql).
- * Si falla, reintenta con service role (opcional) para despliegues sin esas políticas o triggers legacy.
+ * Bootstrap del primer login: asegura que el usuario tenga organization_id.
+ *
+ * Flujo:
+ *  1. El trigger handle_new_auth_user (auth.users INSERT) ya creó la fila en
+ *     public.users con role='data_owner' y organization_id=NULL.
+ *  2. Cuando el usuario entra al dashboard por primera vez, esta función
+ *     comprueba si ya tiene org. Si la tiene, no hace nada.
+ *  3. Si no la tiene, crea una organización nueva, asocia al user como
+ *     'admin' y persiste la asociación.
+ *
+ * Si la sesión RLS no puede crear la org (caso edge tras un signup donde el
+ * trigger todavía no propagó), reintenta con service role.
  */
 export async function ensureUserProfile(): Promise<void> {
   const supabase = await createClient()
@@ -33,49 +41,43 @@ export async function ensureUserProfile(): Promise<void> {
   if (!user) return
 
   const { data: existing } = await supabase
-    .from('profiles')
-    .select('id')
+    .from('users')
+    .select('id, organization_id')
     .eq('id', user.id)
     .maybeSingle()
-  if (existing) return
+  if (existing?.organization_id) return // ya tiene org
 
   const fiscalYear = new Date().getFullYear()
-  const row = {
+  const orgRow = {
     name: 'Mi organización' as const,
     sectors: [] as string[],
     geographies: [] as string[],
-    consolidation: 'operational' as const,
+    consolidation: 'control_operacional' as const,
     fiscal_year: fiscalYear,
     employees: null as null,
     revenue_eur_m: null as null,
-    /** RLS org_select: permite leer la fila tras INSERT antes de existir profiles (ver 20250424120000). */
+    /** RLS org_select: permite leer la org tras INSERT antes de existir el user-org link. */
     created_by_user_id: user.id,
   }
 
   const { data: org, error: orgError } = await supabase
     .from('organizations')
-    .insert(row)
+    .insert(orgRow)
     .select('id')
     .single()
 
   if (!orgError && org) {
-    const { error: pError } = await supabase.from('profiles').insert({
-      id: user.id,
-      organization_id: org.id,
-      role: 'admin',
-      full_name:
-        (user.user_metadata as { full_name?: string; name?: string } | undefined)?.full_name?.trim() ||
-        (user.user_metadata as { full_name?: string; name?: string } | undefined)?.name?.trim() ||
-        null,
-      email: user.email ?? null,
-    })
-    if (!pError) return
-    console.error('[ensureUserProfile] profiles (sesión RLS)', formatSbError(pError))
+    const { error: uError } = await supabase
+      .from('users')
+      .update({ organization_id: org.id, role: 'admin' })
+      .eq('id', user.id)
+    if (!uError) return
+    console.error('[ensureUserProfile] users update (sesión RLS)', formatSbError(uError))
 
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL
     const key = process.env.SUPABASE_SERVICE_ROLE_KEY
     if (url && key) {
-      await insertProfileWithServiceRole(user, org.id, url, key)
+      await updateUserOrgWithServiceRole(user, org.id, url, key)
     }
     return
   }
@@ -88,11 +90,11 @@ export async function ensureUserProfile(): Promise<void> {
     return
   }
 
-  await ensureOrgAndProfileWithServiceRole(user, url, key, row)
+  await ensureOrgAndLinkWithServiceRole(user, url, key, orgRow)
 }
 
-/** Solo inserta el perfil (la org ya existe vía RLS). */
-async function insertProfileWithServiceRole(
+/** El user ya tiene fila en users, solo falta vincular org_id (caso de fallback). */
+async function updateUserOrgWithServiceRole(
   user: User,
   organizationId: string,
   url: string,
@@ -102,29 +104,25 @@ async function insertProfileWithServiceRole(
     auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
   })
 
-  const { error: pError } = await admin.from('profiles').insert({
-    id: user.id,
-    organization_id: organizationId,
-    role: 'admin',
-    full_name:
-      (user.user_metadata as { full_name?: string } | undefined)?.full_name?.trim() || null,
-    email: user.email ?? null,
-  })
+  const { error } = await admin
+    .from('users')
+    .update({ organization_id: organizationId, role: 'admin' })
+    .eq('id', user.id)
 
-  if (pError) {
-    console.error('[ensureUserProfile] profiles (service role, solo perfil)', formatSbError(pError))
+  if (error) {
+    console.error('[ensureUserProfile] users update (service role)', formatSbError(error))
   }
 }
 
-async function ensureOrgAndProfileWithServiceRole(
+async function ensureOrgAndLinkWithServiceRole(
   user: User,
   url: string,
   key: string,
-  row: {
+  orgRow: {
     name: 'Mi organización'
     sectors: string[]
     geographies: string[]
-    consolidation: 'operational'
+    consolidation: 'control_operacional'
     fiscal_year: number
     employees: null
     revenue_eur_m: null
@@ -135,12 +133,16 @@ async function ensureOrgAndProfileWithServiceRole(
     auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
   })
 
-  const { data: again } = await admin.from('profiles').select('id').eq('id', user.id).maybeSingle()
-  if (again) return
+  const { data: again } = await admin
+    .from('users')
+    .select('id, organization_id')
+    .eq('id', user.id)
+    .maybeSingle()
+  if (again?.organization_id) return
 
   const { data: org, error: orgError } = await admin
     .from('organizations')
-    .insert(row)
+    .insert(orgRow)
     .select('id')
     .single()
 
@@ -149,17 +151,13 @@ async function ensureOrgAndProfileWithServiceRole(
     return
   }
 
-  const { error: pError } = await admin.from('profiles').insert({
-    id: user.id,
-    organization_id: org.id,
-    role: 'admin',
-    full_name:
-      (user.user_metadata as { full_name?: string } | undefined)?.full_name?.trim() || null,
-    email: user.email ?? null,
-  })
+  const { error: uErr } = await admin
+    .from('users')
+    .update({ organization_id: org.id, role: 'admin' })
+    .eq('id', user.id)
 
-  if (pError) {
-    console.error('[ensureUserProfile] profiles (service role)', formatSbError(pError))
+  if (uErr) {
+    console.error('[ensureUserProfile] users update (service role)', formatSbError(uErr))
     await admin.from('organizations').delete().eq('id', org.id)
   }
 }

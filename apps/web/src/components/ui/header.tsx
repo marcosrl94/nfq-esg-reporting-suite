@@ -1,13 +1,13 @@
-import type { Profile } from '@/types/database'
+import type { UserAccount } from '@/types/database'
 
 interface HeaderProps {
   title: string
   description?: string
-  profile?: Profile | null
+  account?: UserAccount | null
   children?: React.ReactNode
 }
 
-export function Header({ title, description, profile, children }: HeaderProps) {
+export function Header({ title, description, account, children }: HeaderProps) {
   return (
     <header className="flex items-center justify-between border-b border-zinc-800 bg-zinc-950/50 px-8 py-5">
       <div>
@@ -18,15 +18,15 @@ export function Header({ title, description, profile, children }: HeaderProps) {
       </div>
       <div className="flex items-center gap-4">
         {children}
-        {profile && (
+        {account && (
           <div className="flex items-center gap-3">
             <div className="text-right">
-              <p className="text-sm text-zinc-200">{profile.full_name}</p>
-              <p className="text-xs text-zinc-500 capitalize">{profile.role}</p>
+              <p className="text-sm text-zinc-200">{account.name}</p>
+              <p className="text-xs text-zinc-500 capitalize">{account.role.replace(/_/g, ' ')}</p>
             </div>
             <div className="h-8 w-8 rounded-full bg-emerald-600/20 flex items-center justify-center">
               <span className="text-xs font-medium text-emerald-400">
-                {profile.full_name?.charAt(0)?.toUpperCase() ?? '?'}
+                {account.name?.charAt(0)?.toUpperCase() ?? '?'}
               </span>
             </div>
           </div>
