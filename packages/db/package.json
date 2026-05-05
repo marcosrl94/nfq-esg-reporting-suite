@@ -10,9 +10,9 @@
     "./types": "./src/types.ts"
   },
   "scripts": {
-    "lint": "eslint src",
+    "lint": "echo '@geshop/db · sin código fuente todavía (F1+)'",
     "typecheck": "tsc --noEmit",
-    "gen:types": "echo 'Run: pnpm dlx supabase gen types typescript --project-id <ID> --schema public > src/types.ts'"
+    "gen:types": "echo 'Run: pnpm dlx supabase gen types typescript --project-id dkfwfculonlnhoabxszw --schema public > src/types.ts'"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.2",

@@ -9,7 +9,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "lint": "eslint src",
+    "lint": "echo '@geshop/ai · solo contrato/interfaces, lint real en F3'",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

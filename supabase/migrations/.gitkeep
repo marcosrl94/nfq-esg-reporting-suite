@@ -1,2 +1,2 @@
-Las migraciones se trasplantan en F1 desde nfq-carbon-intelligence/supabase/migrations.
-Ver docs/adr/0002-supabase-single-project.md para el plan detallado.
+F1.1 hecho — 21 migraciones SQL trasplantadas de nfq-carbon-intelligence el 2026-05-05.
+Marcos: borrar este .gitkeep manualmente desde tu Mac (el sandbox no tiene permisos).

@@ -1,0 +1,149 @@
+'use client'
+
+import { useState } from 'react'
+import { createClient } from '@/lib/supabase/client'
+import { useRouter, useSearchParams } from 'next/navigation'
+import Link from 'next/link'
+import { GoogleSignInButton } from '@/components/auth/google-sign-in-button'
+
+const demoErrors: Record<string, string> = {
+  auth: 'No se pudo completar el inicio de sesión. Vuelve a intentarlo.',
+  demo_unconfigured:
+    'Cuenta demo no configurada (DEMO_USER_EMAIL y DEMO_USER_PASSWORD en el servidor).',
+  demo_signin:
+    'No se pudo entrar con la demo. Revisa el usuario en Supabase Auth y la contraseña en .env.',
+}
+
+export function LoginForm() {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const supabase = createClient()
+
+  const errParam = searchParams.get('error')
+  const urlError = errParam ? (demoErrors[errParam] ?? null) : null
+  const displayError = error ?? urlError
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setLoading(true)
+    setError(null)
+
+    const { error } = await supabase.auth.signInWithPassword({ email, password })
+
+    if (error) {
+      setError(error.message)
+      setLoading(false)
+      return
+    }
+
+    router.push('/')
+    router.refresh()
+  }
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-zinc-950 px-4">
+      <div className="w-full max-w-sm space-y-8">
+        <div className="text-center">
+          <div className="flex items-center justify-center gap-2 mb-2">
+            <svg viewBox="0 0 120 120" className="h-9 w-9" aria-hidden="true">
+              <defs>
+                <linearGradient id="loginDarkGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#0F3D2E" />
+                  <stop offset="100%" stopColor="#062019" />
+                </linearGradient>
+                <linearGradient id="loginLeafGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#34D399" />
+                  <stop offset="100%" stopColor="#10B981" />
+                </linearGradient>
+              </defs>
+              <rect width="120" height="120" rx="22" fill="url(#loginDarkGrad)" />
+              <path d="M 35 90 C 35 60, 60 35, 90 35 C 92 70, 70 92, 35 90 Z" fill="url(#loginLeafGrad)" />
+              <line x1="35" y1="90" x2="90" y2="35" stroke="#FAFAF7" strokeWidth="2.5" strokeLinecap="round" />
+              <line x1="90" y1="35" x2="78" y2="35" stroke="#FAFAF7" strokeWidth="2.5" strokeLinecap="round" />
+              <line x1="90" y1="35" x2="90" y2="47" stroke="#FAFAF7" strokeWidth="2.5" strokeLinecap="round" />
+            </svg>
+            <h1 className="text-xl font-semibold text-white">GEShop</h1>
+          </div>
+          <p className="text-zinc-400 text-sm">Inicia sesión en tu cuenta</p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {displayError && (
+            <div className="bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3 text-sm text-red-400">
+              {displayError}
+            </div>
+          )}
+
+          <div>
+            <label htmlFor="email" className="block text-sm font-medium text-zinc-300 mb-1.5">
+              Email
+            </label>
+            <input
+              id="email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              className="w-full rounded-lg border border-zinc-700 bg-zinc-800/50 px-3 py-2 text-white placeholder-zinc-500 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              placeholder="tu@empresa.com"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="password" className="block text-sm font-medium text-zinc-300 mb-1.5">
+              Contraseña
+            </label>
+            <input
+              id="password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              className="w-full rounded-lg border border-zinc-700 bg-zinc-800/50 px-3 py-2 text-white placeholder-zinc-500 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              placeholder="••••••••"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50 transition-colors"
+          >
+            {loading ? 'Entrando...' : 'Iniciar sesión'}
+          </button>
+        </form>
+
+        <div className="relative">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-zinc-700" />
+          </div>
+          <div className="relative flex justify-center text-xs uppercase">
+            <span className="bg-zinc-950 px-2 text-zinc-500">o continúa con</span>
+          </div>
+        </div>
+
+        <GoogleSignInButton />
+
+        <p className="text-center text-sm text-zinc-400">
+          ¿No tienes cuenta?{' '}
+          <Link href="/signup" className="text-emerald-400 hover:text-emerald-300">
+            Regístrate
+          </Link>
+        </p>
+
+        <form action="/api/auth/demo" method="post" className="pt-2">
+          <button
+            type="submit"
+            className="w-full rounded-lg border border-zinc-600 bg-zinc-800/50 px-4 py-2.5 text-sm font-medium text-zinc-200 hover:bg-zinc-800 transition-colors"
+          >
+            Entrar con cuenta demo
+          </button>
+        </form>
+      </div>
+    </div>
+  )
+}

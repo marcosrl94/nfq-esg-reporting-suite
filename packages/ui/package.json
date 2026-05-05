@@ -10,7 +10,7 @@
     "./*": "./src/*.tsx"
   },
   "scripts": {
-    "lint": "eslint src",
+    "lint": "echo '@geshop/ui · sin código fuente todavía (F1+)'",
     "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {

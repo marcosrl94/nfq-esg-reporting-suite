@@ -11,7 +11,18 @@
       "@geshop/ui/*": ["../../packages/ui/src/*"],
       "@geshop/db": ["../../packages/db/src"],
       "@geshop/db/*": ["../../packages/db/src/*"]
-    }
+    },
+
+    /*
+     * F1 compatibility shim · alinear con tsconfig de nfq-carbon-intelligence.
+     * El código trasplantado se escribió bajo `strict: true` solo (sin extras).
+     * Re-activar estos flags en F2 cleanup tras pasar por todos los archivos.
+     */
+    "noUncheckedIndexedAccess": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noImplicitOverride": false,
+    "verbatimModuleSyntax": false
   },
   "include": ["next-env.d.ts", "src/**/*.ts", "src/**/*.tsx", ".next/types/**/*.ts"],
   "exclude": ["node_modules", ".next"]
